@@ -444,6 +444,7 @@ namespace Robot_capsulation
         double Balance_tare(ros::ServiceClient);
 
         std::string move_test(const std::vector<std::any>& args);
+        std::string obstacle_avoidance_movement(const std::vector<std::any>& args);
         std::string move_joints_test();
         // 不定参数函数
         std::unordered_map<std::string, std::function<std::string (const std::vector<std::any>&)>> station_func_with_args_map = {
@@ -453,7 +454,12 @@ namespace Robot_capsulation
                     return this->move_test(args);  // 补充return
                 }
             },
-
+            {
+                "obstacle_avoidance_movement", 
+                [this](const std::vector<std::any>& args) -> std::string {  // 显式指定返回类型
+                    return this->obstacle_avoidance_movement(args);  // 补充return
+                }
+            },
         };
         // 无参数函数
         std::unordered_map<std::string, std::string (Robot_operation::*)(void)> station_func_map = {

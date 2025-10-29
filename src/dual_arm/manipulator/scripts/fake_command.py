@@ -228,8 +228,14 @@ if __name__ == '__main__':
         ops = Station_command("table")
 
         while(ops.existstation_flag):
-            run('o move_test 4')
-            run('O move_joints_test')
+            # 无避障运动
+            # run("A S PTP J 0.1 0.1 pose1")
+            # run("A S PTP J 0.1 0.1 pose2")
+            # 使用ompl RRTConnect做避障规划
+            run("o obstacle_avoidance_movement pose1")
+            run("o obstacle_avoidance_movement pose2")
+            # run('o move_test 4')
+            # run('O move_joints_test')
             # # 全部指令解析详见src/station_func.cpp
             # # 加载data/robot_JP.json点位数据
             # run("F J robot")

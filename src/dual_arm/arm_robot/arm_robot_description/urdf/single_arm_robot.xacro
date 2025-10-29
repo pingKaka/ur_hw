@@ -81,12 +81,16 @@
                izz="0.005"/> <!-- 简化惯性矩阵 -->
     </inertial>
   </link>
+
+  <!-- 在此处修改相机支架相对于机械臂工具面的初始转角origin rpy -->
   <!-- 相机与wrist_3_link的固定关节（Z偏移0mm） -->
   <joint name="wrist3_to_camera_flange" type="fixed">
     <parent link="wrist_3_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->
     <child link="camera_flange_link"/> <!-- 子连杆：相机法兰盘 -->
-    <origin xyz="0 0 0" rpy="0 0 2.356194490192345"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
+    <origin xyz="0 0 -0.5" rpy="0 0 2.356194490192345"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
   </joint>
+
+  <!-- 在此处修改RGI夹爪相对于相机支架的初始转角 rpy -->
   <!-- 夹爪与相机法兰盘的固定关节（Z偏移25mm=0.025m） -->
   <joint name="camera_flange_to_rgi_gripper" type="fixed">
     <parent link="camera_flange_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->

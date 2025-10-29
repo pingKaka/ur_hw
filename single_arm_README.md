@@ -239,3 +239,22 @@ roslaunch manipulator B_JP_record.launch Record_JPfile:=robot
 - 详见manipulator/scripts/fake_command.py
 
 ## 打开终端并输入`roblaunch`可以一键开启所有驱动
+
+## 1031任务
+- 根据各自机械臂的相机支架、RGI安装角度，调整$(rospack find arm_robot_description)/urdf/single_arm_robot.xacro最后的安装角度与距离，保证rviz中的模型与实机一致。重启roblaunch生效
+- 运行roblaunch 或 rosrun manipulator obstacle_sampler.py，开启障碍物采集和发布程序
+- 分为两种采集模式，平面采集(一个点)与矩形采集(两个点)
+   - 平面采集(桌面)：采集一个点(rgi指尖所指向的点)，创建障碍物Box，其顶面与采集点重合
+   - 矩形采集(示教器，三层架子，PGI夹爪....)：采集障碍物顶面矩形的对角两点，创建障碍物Box
+- 采集到的所有障碍物储存在manipulator/scripts/sampled_objects.json中，并且会发布到table_markers话题和PlanningSceneInterface中，在rviz中添加该话题查看所有障碍物
+- 在rviz的MotionPlanning模块中，更改Context/Planning Library中的运动规划库和运动规划算法，并让机械臂运动，比较各算法之间的性能差异
+- 结合先前采样的所有桌面障碍物，使用带避障功能的规划算法，进行路径规划并执行，比较各算法效果
+- 执行fake_command.py，验证RRTConnect规划算法的避障效果：
+   ```python
+      run("A S PTP J 0.1 0.1 pose1")
+      run("A S PTP J 0.1 0.1 pose2")
+      run("o obstacle_avoidance_movement pose1")
+      run("o obstacle_avoidance_movement pose2")
+   ```
+### *进阶内容*
+- 编写C++函数，实现在抓起方块后，将其从场景中删除并绑定在夹爪末端；在放置方块后，将方块从夹爪末端断开，并添加到场景中。

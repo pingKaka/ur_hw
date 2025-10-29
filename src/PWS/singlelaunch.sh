@@ -28,6 +28,6 @@ gnome-terminal --tab -- bash -c "roslaunch manipulator A_robot_start.launch Dual
 sleep 8
 
 gnome-terminal --tab -- bash -c "roslaunch manipulator B_JP_record.launch Record_JPfile:=robot; exec bash"
-gnome-terminal --tab -- bash -c "rosrun manipulator obstacle_sampler.py; exec bash"
+# gnome-terminal --tab -- bash -c "rosrun manipulator obstacle_sampler.py; exec bash"
 
 roslaunch js_control js_control.launch switch_mode:=1 control_mode:=0

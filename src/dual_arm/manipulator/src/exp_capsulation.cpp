@@ -10,6 +10,18 @@ namespace Robot_capsulation
         }
         return result;
     }
+    std::string Robot_operation::obstacle_avoidance_movement(const std::vector<std::any>& args){
+        std::string target_point_name = std::any_cast<std::string>(args[0]);
+        move_group_ptr->setPlanningPipelineId("ompl");
+        move_group_ptr->setPlannerId("RRTConnect");
+        std::vector<double>target_joints;
+        if(!Record_tool::get_joint(target_point_name+"_inverse", joints_, target_joints))
+            return "error";
+        if(!arm_robot_ptr->move_targetJoints(target_joints,true, true))
+            return "error";
+        printf("成功运动至目标点%s\n",target_point_name.c_str());
+        return "success";
+    }
     // 类似fakecom执行带参函数
     std::string Robot_operation::move_test(const std::vector<std::any>& args){
         char id = std::any_cast<double>(args[0])+'0';

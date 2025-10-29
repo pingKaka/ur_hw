@@ -174,7 +174,7 @@ class PointSampler:
 
     def publish_marker(self, marker_id, marker_type, color, pose=None, scale=None, points=None):
         """发布单个Marker"""
-        if not rospy.is_shutdown() or not self.running:
+        if rospy.is_shutdown() or not self.running:
             return
         
         marker = Marker()
@@ -192,7 +192,7 @@ class PointSampler:
         marker.points = points if points else []
         marker.color = color
         marker.lifetime = rospy.Duration(2.0)  # 延长生命周期避免闪烁
-        
+        # print('pub ',marker)
         self.marker_pub.publish(marker)
 
     def publish_all_objects(self):
@@ -283,10 +283,10 @@ class PointSampler:
             'position': {
                 'x': center['x'],
                 'y': center['y'],
-                'z': center['z']
+                'z': center['z']/2
             },
             'orientation': {'x': 0.0, 'y': 0.0, 'z': 0.0, 'w': 1.0},
-            'scale': {'x': 2.0, 'y': 2.0, 'z': 0.01},
+            'scale': {'x': 2.0, 'y': 2.0, 'z': center['z']},
             'volume': round(2.0 * 2.0 * 0.01, 6)
         }
 
