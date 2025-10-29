@@ -25,8 +25,9 @@ gnome-terminal --tab -- bash -c "roslaunch gripper_modbus Gripper_ModbusControl.
 
 # 启动A_gel_start
 gnome-terminal --tab -- bash -c "roslaunch manipulator A_robot_start.launch Dual_arm_flag:=false Dashboard_flag:=true Locator_flag:=false Load_JPfile:=robot; exec bash"
-sleep 10
+sleep 8
 
 gnome-terminal --tab -- bash -c "roslaunch manipulator B_JP_record.launch Record_JPfile:=robot; exec bash"
+gnome-terminal --tab -- bash -c "rosrun manipulator obstacle_sampler.py; exec bash"
 
 roslaunch js_control js_control.launch switch_mode:=1 control_mode:=0

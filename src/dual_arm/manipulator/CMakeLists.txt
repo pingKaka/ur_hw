@@ -278,6 +278,7 @@ target_link_libraries(B_record
 # in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
   scripts/fake_command.py
+  scripts/obstacle_sampler.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
