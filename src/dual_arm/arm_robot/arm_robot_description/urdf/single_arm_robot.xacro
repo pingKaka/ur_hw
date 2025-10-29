@@ -17,6 +17,81 @@
 
     Refer to 'inc/ur_macro.xacro' for more information.
   -->
+  <!-- 加载UR5e核心宏定义（原有代码不变） -->
   <xacro:include filename="$(find arm_robot_description)/urdf/inc/ur5e_macro.xacro"/>
+  <!-- 调用UR5e宏生成机械臂主体（prefix为空，连杆名无前缀） -->
   <xacro:ur5e_robot prefix=""/>
+
+  <!-- ============================================== -->
+  <!-- 新增：1. 相机法兰盘（挂载于wrist_3_link，Z偏移0mm） -->
+  <!-- ============================================== -->
+  <link name="camera_flange_link">
+    <!-- 视觉模型：引用STL文件 -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/> <!-- 方向不对可调整RPY（单位：弧度） -->
+      <geometry>
+        <mesh filename="package://ur_gazebo/meshes/tool_camera/102camera.STL" />
+      </geometry>
+      <material name="camera_material">
+        <color rgba="0.8 0.8 0.8 1.0"/> <!-- 灰色视觉效果 -->
+      </material>
+    </visual>
+    <!-- 碰撞模型：复用视觉STL（简化碰撞检测） -->
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur_gazebo/meshes/tool_camera/102camera.STL" />
+      </geometry>
+    </collision>
+    <!-- 惯性参数：避免Gazebo仿真报错（需按实际重量调整） -->
+    <inertial>
+      <mass value="0.5"/> <!-- 假设重量0.5kg -->
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0"
+               iyy="0.001" iyz="0.0"
+               izz="0.001"/> <!-- 简化惯性矩阵 -->
+    </inertial>
+  </link>
+
+  <!-- ============================================== -->
+  <!-- 新增：2. RGI夹爪（挂载于wrist_3_link，Z偏移25mm） -->
+  <!-- ============================================== -->
+  <link name="rgi_gripper_link">
+    <!-- 视觉模型：引用STL文件 -->
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/> <!-- 方向不对可调整RPY（如pi/2绕X轴转90度） -->
+      <geometry>
+        <mesh filename="package://ur_gazebo/meshes/dh_pgi/RGI-100-22-O-S_3D_v3.0.STL" />
+      </geometry>
+      <material name="gripper_material">
+        <color rgba="0.2 0.6 0.8 1.0"/> <!-- 蓝色视觉效果 -->
+      </material>
+    </visual>
+    <!-- 碰撞模型：复用视觉STL -->
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://ur_gazebo/meshes/dh_pgi/RGI-100-22-O-S_3D_v3.0.STL" />
+      </geometry>
+    </collision>
+    <!-- 惯性参数：按实际夹爪重量调整 -->
+    <inertial>
+      <mass value="1.2"/> <!-- 假设重量1.2kg -->
+      <inertia ixx="0.005" ixy="0.0" ixz="0.0"
+               iyy="0.005" iyz="0.0"
+               izz="0.005"/> <!-- 简化惯性矩阵 -->
+    </inertial>
+  </link>
+  <!-- 相机与wrist_3_link的固定关节（Z偏移0mm） -->
+  <joint name="wrist3_to_camera_flange" type="fixed">
+    <parent link="wrist_3_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->
+    <child link="camera_flange_link"/> <!-- 子连杆：相机法兰盘 -->
+    <origin xyz="0 0 0" rpy="0 0 2.356194490192345"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
+  </joint>
+  <!-- 夹爪与相机法兰盘的固定关节（Z偏移25mm=0.025m） -->
+  <joint name="camera_flange_to_rgi_gripper" type="fixed">
+    <parent link="camera_flange_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->
+    <child link="rgi_gripper_link"/> <!-- 子连杆：RGI夹爪 -->
+    <origin xyz="0 0 0.025" rpy="0 0 0"/> <!-- XYZ偏移：Z=0.025m；RPY默认对齐 -->
+  </joint>
+
 </robot>

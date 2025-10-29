@@ -479,12 +479,13 @@ namespace Record_tool
                             abs_pose.position.x,abs_pose.position.y,abs_pose.position.z,
                             station_pose.position.x,station_pose.position.y,station_pose.position.z);
             int j;
+            name=name+"_station";
             for (j = 0; j < root["station_poses"].size(); ++j)
             {
                 if (root["station_poses"][j]["name"].asString() == name)
                     break;
             }
-            pose["name"] = Json::Value(name+"_station");
+            pose["name"] = Json::Value(name);
             pose["value"][0] = Json::Value(station_pose.position.x);
             pose["value"][1] = Json::Value(station_pose.position.y);
             pose["value"][2] = Json::Value(station_pose.position.z);
