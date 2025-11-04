@@ -3,7 +3,7 @@
     "arm": "left",
     "task": "calib",
     "type": "circleGrid",
-    "matrix": "A1",
+    "matrix": "A2",
     "imageAndPoseDirectory": "img_take/",
     "poseRelativeFile": "pose.txt",
     "calibResultFile": "avg_tq_bTt.txt",
@@ -13,15 +13,15 @@
 
     "calib": {
         "overwrite": true,
-        "minX": -80,
-        "maxX": 80,
-        "minY": -80,
-        "maxY": 80,
-        "minZ": 250,
-        "maxZ": 350,
-        "pointNumX": 5,
-        "pointNumY": 5,
-        "pointNumZ": 3
+        "minX": -10,
+        "maxX": 10,
+        "minY": -10,
+        "maxY": 10,
+        "minZ": 270,
+        "maxZ": 320,
+        "pointNumX": 2,
+        "pointNumY": 2,
+        "pointNumZ": 1
     },
     "multiloc": {
         "minX": -90,
@@ -50,6 +50,7 @@
     "circleGrid": {
         "circleDistance": 7,
         "circleRadius": 1.75,
-        "circlePerRow": 7
+        "circlePerRow": 7,
+        "initAngle": 0
     }
 }

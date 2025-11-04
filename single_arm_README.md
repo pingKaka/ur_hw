@@ -14,6 +14,7 @@
 ![](./image/fishos.png)
 ```shell
 wget http://fishros.com/install -O fishros && . fishros
+如果是zsh：wget http://fishros.com/install -O fishros && chmod +x fishros && sudo ./fishros
 [1]:一键安装(推荐):ROS(支持ROS/ROS2,树莓派Jetson)
 [3]:一键安装:rosdep(小鱼的rosdepc,又快又好用)
 [7]:一键安装:VsCode开发工具
@@ -53,7 +54,7 @@ catkin clean
 - 进入主目录(Home)，`Ctrl+H`显示隐藏文件，在最后添加，之后每次开启新终端时都会执行一遍以下指令：
 ```shell
 source ~/C_library/teachur5_code/devel/setup.bash
-alias roblaunch="bash ~/C_library/chem_dual_rob/src/dual_smartrobot/src/PWS/singlelaunch.sh"
+alias roblaunch="bash ~/C_library/teachur5_code/src/PWS/singlelaunch.sh"
 alias fakecom="cd $(rospack find manipulator)/scripts && python3 fake_command.py"
 ```
 - 如果暂时不需要conda，建议在最后额外加一行：

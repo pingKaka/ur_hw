@@ -754,10 +754,9 @@ namespace Robot_capsulation
                         }
                     }
                 }
-            }else if(switch_robot=="L"||switch_robot=="R"){
+            }else if(switch_robot=="L"||switch_robot=="R"||switch_robot=="S"){
                 ss>>Lx>>Ly>>Lz>>LR>>LP>>LY;
                 if(ss.fail()){
-                    printf("failed4\n");
                     ss=std::stringstream(input);
                     ss>>Lname;
                     std::cout<<"temp got:"<<Lname<<std::endl;

@@ -123,6 +123,7 @@ class MoveAndCapture:
         self.publish_tf=None
         # 读取相机内参和畸变参数（用于坐标变换）
         self.gTc, self.camera_matrix, self.dist_coeffs = self.readIntrinsic()
+        self.arm_short=self.config.get('arm','left')[0].upper()
     def read_gTc(self):
         # 获取相机内参
         gTc = np.loadtxt(f"matrix/{self.config['arm']}_gTc.txt", delimiter=',')
@@ -208,12 +209,12 @@ class MoveAndCapture:
         :param nums: 拍摄序号（用于图像命名和位姿记录ID）
         """
         # 1. 获取机械臂运动前的位姿（基础坐标系下，单位：米/弧度）
-        initial_state = self.robot.getPoseBase()
+        initial_state = self.robot.getPoseBase(self.arm_short)
         # 2. 拍摄图像并保存（命名格式：序号.png，如0.png）
         image_name='oneloc.png' if oneloc else f'multiloc_{nums}.png'
         self.camera.saveFrameTo(f'{self.file_path}/{image_name}')
         # 3. 获取机械臂运动后的位姿（用于计算运动前后的偏差）
-        final_state = self.robot.getPoseBase()
+        final_state = self.robot.getPoseBase(self.arm_short)
 
         # 4. 计算位姿变化量（转换为毫米单位，方便观察）
         delta_state = (np.array(final_state) - np.array(initial_state)) * 1000
@@ -258,7 +259,7 @@ class MoveAndCapture:
         # 3. 构造机械臂目标位姿（[x, y, z, rx, ry, rz]，单位：米/弧度）
         pose = [point[0], point[1], point[2], rpy_deg[0], rpy_deg[1], rpy_deg[2]]
         # 4. 控制机械臂移动到目标位姿（速度0.2m/s，加速度0.1m/s²，调用Robot类的moveP函数）
-        self.robot.moveP(self.config['moveP_vel'], self.config['moveP_acc'], pose)
+        self.robot.moveP(self.config['moveP_vel'], self.config['moveP_acc'], pose, self.arm_short)
 
         # 5. 等待机械臂稳定（0.1秒延迟，避免运动未结束就拍照）
         time.sleep(.1)

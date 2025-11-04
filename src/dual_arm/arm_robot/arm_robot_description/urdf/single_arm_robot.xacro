@@ -21,7 +21,14 @@
   <xacro:include filename="$(find arm_robot_description)/urdf/inc/ur5e_macro.xacro"/>
   <!-- 调用UR5e宏生成机械臂主体（prefix为空，连杆名无前缀） -->
   <xacro:ur5e_robot prefix=""/>
-
+  <!-- 在第一个URDF文件中添加以下代码（建议放在<xacro:ur5e_robot prefix=""/>之后） -->
+  <link name="world"/> <!-- 定义根节点world（如果未定义） -->
+  <joint name="base_to_world" type="fixed">
+    <parent link="world"/> <!-- 父节点：根节点world -->
+    <child link="base_link"/> <!-- 子节点：UR5e的基座link（无prefix，对应你的设置） -->
+    <origin xyz="0 0 0" rpy="0 0 0"/> <!-- 基座在world中的初始位置，可根据需求调整 -->
+    <axis xyz="0 0 0"/>
+  </joint>
   <!-- ============================================== -->
   <!-- 新增：1. 相机法兰盘（挂载于wrist_3_link，Z偏移0mm） -->
   <!-- ============================================== -->
@@ -87,7 +94,7 @@
   <joint name="wrist3_to_camera_flange" type="fixed">
     <parent link="wrist_3_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->
     <child link="camera_flange_link"/> <!-- 子连杆：相机法兰盘 -->
-    <origin xyz="0 0 -0.5" rpy="0 0 2.356194490192345"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
+    <origin xyz="0 0 0" rpy="0 0 2.356194490192345"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
   </joint>
 
   <!-- 在此处修改RGI夹爪相对于相机支架的初始转角 rpy -->
@@ -98,4 +105,29 @@
     <origin xyz="0 0 0.025" rpy="0 0 0"/> <!-- XYZ偏移：Z=0.025m；RPY默认对齐 -->
   </joint>
 
+  <link name="camera_color_optical_frame"/>
+  <joint name="tool0_to_camera_color_optical_frame" type="fixed">
+    <origin
+      xyz="-0.069522924 -0.038236981999999996 0.024545313"
+      rpy="-1.044416 0.024939 1.573397" />
+    <parent
+      link="tool0" />
+    <child
+      link="camera_color_optical_frame" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+
+  <link name="rgi_tip"/>
+  <joint name="wrist_3_to_rgi_tip" type="fixed">
+    <origin
+      xyz="0 0 0.207"
+      rpy="0 0 0" />
+    <parent
+      link="wrist_3_link" />
+    <child
+      link="rgi_tip" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
 </robot>

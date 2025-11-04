@@ -285,15 +285,8 @@ def movePointsToRectangleCenter(object_points):
 
 
 class Pattern:
-    def __init__(self, config):
-        self.tf_broadcaster = tf2_ros.TransformBroadcaster()
-        self.current_tf = {}
-        self.last_tf={}
-        self.alpha=0.3
-        self.tf_timer_running = False
-        self.tf_timer_thread = None
-        self.start_tf_timer()  # 启动定时器
-
+    def __init__(self, config, add_tf):
+        self.add_tf=add_tf
         self.config=config
         task = config['task']
         self.task = task
@@ -321,95 +314,6 @@ class Pattern:
         gTc = self.read_gTc()
         camera_matrix, dist_coeffs = self.readCameraMatrix()
         return gTc, camera_matrix, dist_coeffs
-    
-    def start_tf_timer(self):
-        """启动独立的TF发布定时器线程"""
-        if not self.tf_timer_running:
-            self.tf_timer_running = True
-            self.tf_timer_thread = threading.Thread(target=self.tf_timer_loop, daemon=True)
-            self.tf_timer_thread.start()
-            rospy.loginfo("TF发布定时器已启动")
-    def tf_timer_loop(self):
-        """定时器循环，使用alpha系数滤波器发布平滑的TF变换"""
-        rate = 30  # 30Hz发布频率
-        while self.tf_timer_running and not rospy.is_shutdown():
-            for key in list(self.current_tf.keys()):
-                new_transform = self.current_tf[key]
-                
-                # 应用alpha系数滤波
-                filtered_transform = self.alpha_filter(key, new_transform)
-                
-                # 更新时间戳并发布
-                filtered_transform.header.stamp = rospy.Time.now()
-                self.tf_broadcaster.sendTransform(filtered_transform)
-            
-            time.sleep(1.0 / rate)
-
-    def alpha_filter(self, key, new_transform):
-        """
-        指数移动平均滤波：filtered = alpha * new + (1 - alpha) * last
-        :param key: TF变换的标识键
-        :param new_transform: 新的原始TF变换
-        :return: 滤波后的TF变换
-        """
-        # 若为首次处理该TF，直接使用新值作为初始值
-        if key not in self.last_tf:
-            self.last_tf[key] = new_transform
-            return new_transform
-        
-        # 获取上一次的滤波结果
-        last = self.last_tf[key]
-        filtered = geometry_msgs.msg.TransformStamped()
-        filtered.header = new_transform.header
-        filtered.child_frame_id = new_transform.child_frame_id
-        
-        # 平移分量滤波：alpha×新值 + (1-alpha)×旧值
-        filtered.transform.translation.x = self.alpha * new_transform.transform.translation.x + \
-                                        (1 - self.alpha) * last.transform.translation.x
-        filtered.transform.translation.y = self.alpha * new_transform.transform.translation.y + \
-                                        (1 - self.alpha) * last.transform.translation.y
-        filtered.transform.translation.z = self.alpha * new_transform.transform.translation.z + \
-                                        (1 - self.alpha) * last.transform.translation.z
-        
-        # 旋转分量（四元数）滤波：同样使用指数加权平均，最后归一化
-        filtered.transform.rotation.x = self.alpha * new_transform.transform.rotation.x + \
-                                    (1 - self.alpha) * last.transform.rotation.x
-        filtered.transform.rotation.y = self.alpha * new_transform.transform.rotation.y + \
-                                    (1 - self.alpha) * last.transform.rotation.y
-        filtered.transform.rotation.z = self.alpha * new_transform.transform.rotation.z + \
-                                    (1 - self.alpha) * last.transform.rotation.z
-        filtered.transform.rotation.w = self.alpha * new_transform.transform.rotation.w + \
-                                    (1 - self.alpha) * last.transform.rotation.w
-        
-        # 归一化四元数（确保旋转分量合法性）
-        norm = np.sqrt(
-            filtered.transform.rotation.x**2 +
-            filtered.transform.rotation.y**2 +
-            filtered.transform.rotation.z**2 +
-            filtered.transform.rotation.w**2
-        )
-        if norm > 0:
-            filtered.transform.rotation.x /= norm
-            filtered.transform.rotation.y /= norm
-            filtered.transform.rotation.z /= norm
-            filtered.transform.rotation.w /= norm
-        
-        # 更新上一次的滤波结果
-        self.last_tf[key] = filtered
-        return filtered
-    def remove_tf(self, key):
-        """移除不需要发布的TF变换"""
-        if key in self.current_tf:
-            del self.current_tf[key]
-            rospy.loginfo(f"已停止发布TF变换: {key}")
-    def shutdown(self):
-        """关闭定时器线程"""
-        self.tf_timer_running = False
-        if self.tf_timer_thread:
-            self.tf_timer_thread.join()
-        rospy.loginfo("TF发布定时器已关闭")
-    def __del__(self):
-        self.shutdown()
         
     def calculateOneloc(self, object_points, image_points, bTg):
         # 计算相机坐标系下 target 的位姿
@@ -633,11 +537,17 @@ class Pattern:
         transform_stamped = geometry_msgs.msg.TransformStamped()
         transform_stamped.header.stamp = rospy.Time.now()
         if a=='c':
-            transform_stamped.header.frame_id = f'{self.config["arm"]}_camera_color_optical_frame'  # 相机坐标系
+            if self.config["arm"]=='single':
+                transform_stamped.header.frame_id = f'camera_color_optical_frame'  # 相机坐标系
+            else:
+                transform_stamped.header.frame_id = f'{self.config["arm"]}_camera_color_optical_frame'  # 相机坐标系
         elif a=='b':
             transform_stamped.header.frame_id = 'world'  # 机器人基座标
         elif a=='g':
-            transform_stamped.header.frame_id = f'{self.config["arm"]}_tool0'  # 机械臂工具坐标
+            if self.config["arm"]=='single':
+                transform_stamped.header.frame_id = f'tool0'  # 机械臂工具坐标
+            else:
+                transform_stamped.header.frame_id = f'{self.config["arm"]}_tool0'  # 机械臂工具坐标
         elif a=='t':
             transform_stamped.header.frame_id = 'target'  # 标定板坐标
 
@@ -646,7 +556,10 @@ class Pattern:
         elif b=='b':
             transform_stamped.child_frame_id = f'{a}_world'  # 机器人基座标
         elif b=='g':
-            transform_stamped.child_frame_id = f'{a}_{self.config["arm"]}_tool0'  # 机械臂工具坐标
+            if self.config["arm"]=='single':
+                transform_stamped.child_frame_id = f'{a}_tool0'  # 机械臂工具坐标
+            else:
+                transform_stamped.child_frame_id = f'{a}_{self.config["arm"]}_tool0'  # 机械臂工具坐标
         elif b=='t':
             if marker_name=='':
                 transform_stamped.child_frame_id = f'target_marker'  # 标定板坐标
@@ -664,7 +577,7 @@ class Pattern:
         print(f'发布tf变换:{transform_stamped.header.frame_id}->{transform_stamped.child_frame_id}')
         # 用"父->子"作为键存储变换，相同键会自动更新
         key = f"{transform_stamped.header.frame_id}->{transform_stamped.child_frame_id}"
-        self.current_tf[key] = transform_stamped
+        self.add_tf(key,transform_stamped)
         return key  # 返回键，方便后续删除
     def calculateCalib(self, imageLength, all_bTg, rvecs, tvecs):
         # 准备 bTg, cTt
@@ -727,9 +640,8 @@ class Pattern:
 
 
 class Charuco(Pattern):
-    def __init__(self, config):
-        # 父类初始化
-        super(Charuco, self).__init__(config)
+    def __init__(self, config, add_tf):
+        super(Charuco, self).__init__(config,add_tf)
         assert self.type == 'charuco'
 
         # 1. Charuco板中嵌入的ArUco标记字典类型
@@ -908,8 +820,8 @@ class Charuco(Pattern):
 
 # Aruco二维码
 class Aruco(Pattern):
-    def __init__(self, config):
-        super(Aruco, self).__init__(config)
+    def __init__(self, config, add_tf):
+        super(Aruco, self).__init__(config,add_tf)
         assert self.type == 'aruco'
         # assert self.task != 'calib'
 
@@ -1073,8 +985,8 @@ class Aruco(Pattern):
         return mean_bTt
 # 圆点标定板
 class CircleGrid(Pattern):
-    def __init__(self, config):
-        super(CircleGrid, self).__init__(config)
+    def __init__(self, config, add_tf):
+        super(CircleGrid, self).__init__(config,add_tf)
         assert self.type == 'circleGrid'
 
         # 圆心间距
@@ -1084,6 +996,7 @@ class CircleGrid(Pattern):
         # 行数/列数
         self.circlePerRow = config['circleGrid']['circlePerRow']
         self.circleGridObjectPositions=self.getObjectPoints()
+        self.initAngle = config['circleGrid']['initAngle']
     def _detectCircleGrid(self, image_file=None, image_=None):
         if image_file is not None:
             ic(image_file)
@@ -1103,7 +1016,7 @@ class CircleGrid(Pattern):
         patternSize = (self.circlePerRow, self.circlePerRow)
         #cv.imwrite('data/gray.png', gray.copy())
 
-        params = cv.SimpleBlobDetector.Params()
+        params = cv.SimpleBlobDetector_Params()
         ic(params.maxArea)
         ic(params.blobColor)
         detector = cv.SimpleBlobDetector.create(params)
@@ -1158,9 +1071,12 @@ class CircleGrid(Pattern):
         ic(allGray)
         allGray.sort()
         if allGray[1] - allGray[0] <= 8:
-            rospy.logerr(f"图像多个候选区域亮度接近，可能存在检测误差，识别失败 delta={allGray[1] - allGray[0]}")
+            rospy.logerr(f"无法判断二维码朝向(0,90,180,270)，识别失败，角区灰度差delta={allGray[1] - allGray[0]}")
             return None
-        centersGrid = allCenterGrid[minIndex]
+        init_index=((int)(self.initAngle)%360+45)//90
+        if init_index:
+            rospy.loginfo(f"修正二维码初始旋转角{self.initAngle:d} {init_index}")
+        centersGrid = allCenterGrid[(minIndex-init_index+4)%4]
         centers = centersGrid.reshape(self.circlePerRow * self.circlePerRow, 1, 2)
 
         # image
@@ -1172,6 +1088,7 @@ class CircleGrid(Pattern):
         # ic(len(centers))
         assert len(centers) == self.circlePerRow * self.circlePerRow
         centers = centers.reshape(self.circlePerRow * self.circlePerRow, 2)
+        # print(centers)
         return centers
 
     def getObjectPoints(self):

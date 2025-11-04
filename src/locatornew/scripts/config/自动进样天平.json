@@ -50,6 +50,7 @@
     "circleGrid": {
         "circleDistance": 7,
         "circleRadius": 1.75,
-        "circlePerRow": 7
+        "circlePerRow": 7,
+        "initAngle": 0
     }
 }

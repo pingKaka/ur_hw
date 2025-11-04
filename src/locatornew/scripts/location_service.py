@@ -24,6 +24,14 @@ deviceNameToConfigFile = {
     'uv': 'config/紫外光谱仪.json',
     'fume_hood': 'config/通风橱.json',
     'auto_balance': 'config/自动进样天平.json',
+    'liquid_injector_1ml': 'config/液体进样器1ml.json',
+    'liquid_injector_5ml': 'config/液体进样器5ml.json',
+    'reagent_rack': 'config/试剂架.json',
+    'elecchemistry': 'config/电化学.json',
+    'centrifuge_purification': 'config/离心纯化.json',
+    '121table': 'config/121光学平台.json',
+    
+    
 }
 
 
@@ -33,6 +41,14 @@ class Locator:
     def __init__(self):
         """初始化节点，创建Topic和Service相关组件"""
         print("尝试初始化节点：location_service（支持Topic和Service）")
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster()
+        self.current_tf = {}
+        self.last_tf={}
+        self.alpha=0.3
+        self.tf_timer_running = False
+        self.tf_timer_thread = None
+        self.start_tf_timer()  # 启动定时器
+
         self.config = None
         self.pose = None
         self.moveAndCapture = None
@@ -61,13 +77,99 @@ class Locator:
         print("节点初始化完成：location_service（支持Topic和Service）")
         print("订阅话题：/locator_topic")
         print("提供服务：/locator_service")
+    def start_tf_timer(self):
+        """启动独立的TF发布定时器线程"""
+        if not self.tf_timer_running:
+            self.tf_timer_running = True
+            self.tf_timer_thread = threading.Thread(target=self.tf_timer_loop, daemon=True)
+            self.tf_timer_thread.start()
+            rospy.loginfo("TF发布定时器已启动")
+    def tf_timer_loop(self):
+        """定时器循环，使用alpha系数滤波器发布平滑的TF变换"""
+        rate = 30  # 30Hz发布频率
+        while self.tf_timer_running and not rospy.is_shutdown():
+            for key in list(self.current_tf.keys()):
+                new_transform = self.current_tf[key]
+                
+                # 应用alpha系数滤波
+                filtered_transform = self.alpha_filter(key, new_transform)
+                
+                # 更新时间戳并发布
+                filtered_transform.header.stamp = rospy.Time.now()
+                self.tf_broadcaster.sendTransform(filtered_transform)
+            
+            time.sleep(1.0 / rate)
 
+    def alpha_filter(self, key, new_transform):
+        """
+        指数移动平均滤波：filtered = alpha * new + (1 - alpha) * last
+        :param key: TF变换的标识键
+        :param new_transform: 新的原始TF变换
+        :return: 滤波后的TF变换
+        """
+        # 若为首次处理该TF，直接使用新值作为初始值
+        if key not in self.last_tf:
+            self.last_tf[key] = new_transform
+            return new_transform
+        
+        # 获取上一次的滤波结果
+        last = self.last_tf[key]
+        filtered = geometry_msgs.msg.TransformStamped()
+        filtered.header = new_transform.header
+        filtered.child_frame_id = new_transform.child_frame_id
+        
+        # 平移分量滤波：alpha×新值 + (1-alpha)×旧值
+        filtered.transform.translation.x = self.alpha * new_transform.transform.translation.x + \
+                                        (1 - self.alpha) * last.transform.translation.x
+        filtered.transform.translation.y = self.alpha * new_transform.transform.translation.y + \
+                                        (1 - self.alpha) * last.transform.translation.y
+        filtered.transform.translation.z = self.alpha * new_transform.transform.translation.z + \
+                                        (1 - self.alpha) * last.transform.translation.z
+        
+        # 旋转分量（四元数）滤波：同样使用指数加权平均，最后归一化
+        filtered.transform.rotation.x = self.alpha * new_transform.transform.rotation.x + \
+                                    (1 - self.alpha) * last.transform.rotation.x
+        filtered.transform.rotation.y = self.alpha * new_transform.transform.rotation.y + \
+                                    (1 - self.alpha) * last.transform.rotation.y
+        filtered.transform.rotation.z = self.alpha * new_transform.transform.rotation.z + \
+                                    (1 - self.alpha) * last.transform.rotation.z
+        filtered.transform.rotation.w = self.alpha * new_transform.transform.rotation.w + \
+                                    (1 - self.alpha) * last.transform.rotation.w
+        
+        # 归一化四元数（确保旋转分量合法性）
+        norm = np.sqrt(
+            filtered.transform.rotation.x**2 +
+            filtered.transform.rotation.y**2 +
+            filtered.transform.rotation.z**2 +
+            filtered.transform.rotation.w**2
+        )
+        if norm > 0:
+            filtered.transform.rotation.x /= norm
+            filtered.transform.rotation.y /= norm
+            filtered.transform.rotation.z /= norm
+            filtered.transform.rotation.w /= norm
+        
+        # 更新上一次的滤波结果
+        self.last_tf[key] = filtered
+        return filtered
+    def add_tf(self, key, value):
+        self.current_tf[key]=value
+    def remove_tf(self, key):
+        """移除不需要发布的TF变换"""
+        if key in self.current_tf:
+            del self.current_tf[key]
+            rospy.loginfo(f"已停止发布TF变换: {key}")
     def shutdown(self):
-        """关闭节点资源"""
-        print("\n关闭节点...")
+        """关闭定时器线程"""
         if self.publish_timer is not None and self.publish_timer.is_alive():
             self.publish_timer.shutdown()
             rospy.loginfo("10Hz发布定时器已停止")
+        self.tf_timer_running = False
+        if self.tf_timer_thread:
+            self.tf_timer_thread.join()
+        rospy.loginfo("TF发布定时器已关闭")
+    def __del__(self):
+        self.shutdown()
 
     def oneloc(self):
         """单次识别逻辑"""
@@ -76,7 +178,7 @@ class Locator:
             self.moveAndCapture.savePhotoAndPose(0, True)
             result_bTt = self.pattern.realtime(
                 self.moveAndCapture.camera.saveFrameTo('./img_take/oneloc.png'),
-                self.moveAndCapture.robot.getPoseBase()
+                self.moveAndCapture.robot.getPoseBase(self.moveAndCapture.arm_short)
             )
             ic(result_bTt)
             
@@ -96,7 +198,7 @@ class Locator:
             while not rospy.is_shutdown():
                 result_bTt = self.pattern.realtime(
                     self.moveAndCapture.camera.saveFrameTo('./img_take/oneloc.png'),
-                    self.moveAndCapture.robot.getPoseBase()
+                    self.moveAndCapture.robot.getPoseBase(self.moveAndCapture.arm_short)
                 )
             print(f"~~~~~~~~结束实时识别~~~~~~~~")
         except Exception as e:
@@ -180,11 +282,11 @@ class Locator:
 
             # 初始化标定板类型
             if marker_type == 'aruco':
-                self.pattern = Aruco(self.config)
+                self.pattern = Aruco(self.config,self.add_tf)
             elif marker_type == 'charuco':
-                self.pattern = Charuco(self.config)
+                self.pattern = Charuco(self.config,self.add_tf)
             elif marker_type == 'circleGrid':
-                self.pattern = CircleGrid(self.config)
+                self.pattern = CircleGrid(self.config,self.add_tf)
             else:
                 status = f"error: unknown board type '{marker_type}'"
                 rospy.logerr(status)
@@ -318,7 +420,10 @@ class Locator:
         """写入标定结果到Xacro文件"""
         try:
             arm_robot_description = os.popen("rospack find arm_robot_description").read().strip()
-            xacro_path = os.path.join(arm_robot_description, "urdf", "dual_arm_robot.xacro")
+            if self.config.get('arm', 'left') == 'single':
+                xacro_path = os.path.join(arm_robot_description, "urdf", "single_arm_robot.xacro")
+            else:
+                xacro_path = os.path.join(arm_robot_description, "urdf", "dual_arm_robot.xacro")
             if not os.path.exists(xacro_path):
                 rospy.logerr(f"Xacro文件不存在: {xacro_path}")
                 return False
@@ -338,8 +443,10 @@ class Locator:
         # 目标关节名称
         if self.config.get('arm', 'left') == 'left':
             target_joint_name = "${prefix2}tool0_to_camera_color_optical_frame"
-        else:
+        elif self.config.get('arm', 'left') == 'right':
             target_joint_name = "${prefix1}tool0_to_camera_color_optical_frame"
+        else:
+            target_joint_name = "tool0_to_camera_color_optical_frame"
         target_joint_found = False
 
         # 处理文件内容
@@ -396,19 +503,34 @@ class Locator:
             # 未找到关节时添加新关节
             if not target_joint_found:
                 rospy.loginfo(f"未找到关节{target_joint_name}，添加新关节")
-                new_joint = [
-                    f'  <joint name="{target_joint_name}" type="fixed">\n',
-                    f'    <origin\n',
-                    f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
-                    f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
-                    f'    <parent\n',
-                    f'      link="${{prefix}}tool0" />\n',
-                    f'    <child\n',
-                    f'      link="${{prefix}}camera_color_optical_frame" />\n',
-                    f'    <axis\n',
-                    f'      xyz="0 0 0" />\n',
-                    f'  </joint>\n'
-                ]
+                if self.config.get('arm', 'left')=='single':
+                    new_joint = [
+                        f'  <joint name="{target_joint_name}" type="fixed">\n',
+                        f'    <origin\n',
+                        f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
+                        f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
+                        f'    <parent\n',
+                        f'      link="tool0" />\n',
+                        f'    <child\n',
+                        f'      link="camera_color_optical_frame" />\n',
+                        f'    <axis\n',
+                        f'      xyz="0 0 0" />\n',
+                        f'  </joint>\n'
+                    ]
+                else:
+                    new_joint = [
+                        f'  <joint name="{target_joint_name}" type="fixed">\n',
+                        f'    <origin\n',
+                        f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
+                        f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
+                        f'    <parent\n',
+                        f'      link="${{prefix}}tool0" />\n',
+                        f'    <child\n',
+                        f'      link="${{prefix}}camera_color_optical_frame" />\n',
+                        f'    <axis\n',
+                        f'      xyz="0 0 0" />\n',
+                        f'  </joint>\n'
+                    ]
                 # 插入到xacro:macro结束前
                 for i in range(len(new_content)):
                     if "</xacro:macro>" in new_content[i]:
