@@ -294,6 +294,7 @@ class Pattern:
         self.imageAndPoseDirectory = config['imageAndPoseDirectory']
         self.poseRelativeFile = config['poseRelativeFile']
         self.calibResultFile = config['calibResultFile']
+        self.nonRotating = config['nonRotating']
 
         gTc, camera_matrix, dist_coeffs = self.readIntrinsic()
         self.gTc = gTc
@@ -318,6 +319,9 @@ class Pattern:
     def calculateOneloc(self, object_points, image_points, bTg):
         # 计算相机坐标系下 target 的位姿
         cTt = self.calculate_cTt(object_points, image_points, self.camera_matrix, self.dist_coeffs)
+        if self.nonRotating:
+            print(f'目标无旋转矫正')
+            cTt=self._select_best_rotation(cTt)
         gTc = self.gTc
 
         # 计算 target 坐标系下的相机位姿
@@ -537,17 +541,11 @@ class Pattern:
         transform_stamped = geometry_msgs.msg.TransformStamped()
         transform_stamped.header.stamp = rospy.Time.now()
         if a=='c':
-            if self.config["arm"]=='single':
-                transform_stamped.header.frame_id = f'camera_color_optical_frame'  # 相机坐标系
-            else:
-                transform_stamped.header.frame_id = f'{self.config["arm"]}_camera_color_optical_frame'  # 相机坐标系
+            transform_stamped.header.frame_id = f'{self.config["arm"]}_camera_color_optical_frame'  # 相机坐标系
         elif a=='b':
             transform_stamped.header.frame_id = 'world'  # 机器人基座标
         elif a=='g':
-            if self.config["arm"]=='single':
-                transform_stamped.header.frame_id = f'tool0'  # 机械臂工具坐标
-            else:
-                transform_stamped.header.frame_id = f'{self.config["arm"]}_tool0'  # 机械臂工具坐标
+            transform_stamped.header.frame_id = f'{self.config["arm"]}_tool0'  # 机械臂工具坐标
         elif a=='t':
             transform_stamped.header.frame_id = 'target'  # 标定板坐标
 
@@ -556,10 +554,7 @@ class Pattern:
         elif b=='b':
             transform_stamped.child_frame_id = f'{a}_world'  # 机器人基座标
         elif b=='g':
-            if self.config["arm"]=='single':
-                transform_stamped.child_frame_id = f'{a}_tool0'  # 机械臂工具坐标
-            else:
-                transform_stamped.child_frame_id = f'{a}_{self.config["arm"]}_tool0'  # 机械臂工具坐标
+            transform_stamped.child_frame_id = f'{a}_{self.config["arm"]}_tool0'  # 机械臂工具坐标
         elif b=='t':
             if marker_name=='':
                 transform_stamped.child_frame_id = f'target_marker'  # 标定板坐标
@@ -637,7 +632,58 @@ class Pattern:
         self.calculate_bTt_std(imageLength, all_bTt)
         # 不严格区分 id=0 的 aruco 码的坐标系、target 坐标系
         return gTc
-
+    
+    def _rotate_around_self_z(self, transform, degrees):
+        """
+        绕变换矩阵自身Z轴旋转（标定板坐标系Z轴）
+        :param transform: 原始变换矩阵 (4x4)
+        :param degrees: 旋转角度（0/90/180/270）
+        :return: 旋转后的变换矩阵 (4x4)
+        """
+        # 将角度转换为弧度
+        rad = np.radians(degrees)
+        # 绕Z轴旋转的旋转矩阵
+        rot_z = np.array([
+            [np.cos(rad), -np.sin(rad), 0, 0],
+            [np.sin(rad), np.cos(rad), 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ], dtype=np.float64)
+        
+        # 旋转逻辑：先将坐标系原点移到自身原点，旋转后移回（这里自身Z轴旋转无需平移补偿）
+        # 变换矩阵乘法顺序：旋转矩阵左乘原始矩阵（绕自身轴旋转）
+        rotated = transform @ rot_z  # 等价于：rotated = np.dot(transform, rot_z)
+        return rotated
+    # 新增：筛选Y轴最接近视野正下方的变换矩阵
+    def _select_best_rotation(self, transform):
+        """
+        生成4个旋转角度的变换矩阵，筛选出Y轴最接近图像正下方（图像Y轴向下）的结果
+        :param transform: 原始变换矩阵 (4x4)
+        :return: 最优旋转后的变换矩阵
+        """
+        # 图像视野正下方的方向向量（图像坐标系Y轴向下，对应相机坐标系Y轴正向）
+        target_y_dir = np.array([0, 1, 0])  # 期望Y轴指向下方
+        
+        best_transform = transform
+        max_alignment = -np.inf  # 用于衡量Y轴对齐程度（点积越大越对齐）
+        
+        # 尝试4个旋转角度
+        for angle in [0, 90, 180, 270]:
+            rotated = self._rotate_around_self_z(transform, angle)
+            
+            # 提取旋转后的Y轴方向（变换矩阵的第2列前3个元素）
+            y_axis = rotated[:3, 1]
+            y_axis_normalized = y_axis / np.linalg.norm(y_axis)  # 归一化
+            
+            # 计算与目标方向的点积（值越大越接近）
+            alignment = np.dot(y_axis_normalized, target_y_dir)
+            
+            # 更新最优结果
+            if alignment > max_alignment:
+                max_alignment = alignment
+                best_transform = rotated
+        
+        return best_transform
 
 class Charuco(Pattern):
     def __init__(self, config, add_tf):
@@ -929,11 +975,13 @@ class Aruco(Pattern):
             # 计算位姿（使用当前ID的角点和尺寸）
             bTt = self.calculateOneloc(self.object_points[marker_id], corners, trans_pose_to_bTg(pose))
             self.publish_tf(bTt, 'b', 't', f'aruco_{marker_id}_marker')
+            bTt[0][3] /= 1000.0
+            bTt[1][3] /= 1000.0
+            bTt[2][3] /= 1000.0
             target_marker_bTts[marker_id] = bTt
             # print(f"ID={marker_id} 的位姿矩阵：\n{bTt}")
         
         print(f'单次定位整体时间:{(time.time()-stime)*1000:.1f} ms 帧率:{1/(time.time()-stime):.0f}帧/s')
-    
         return target_marker_bTts
 
     def multiloc(self):
@@ -982,6 +1030,9 @@ class Aruco(Pattern):
         self.publish_tf(mean_bTt, 'b', 't', f'aruco_{target_marker_id}marker_mean')
         print('~~~~~~~~结束多帧定位~~~~~~~~')
         # 调用 calculateLoc 方法计算最终的定位结果
+        # mean_bTt[0][3] /= 1000.0  # x坐标转换
+        # mean_bTt[1][3] /= 1000.0  # y坐标转换
+        # mean_bTt[2][3] /= 1000.0  # z坐标转换
         return mean_bTt
 # 圆点标定板
 class CircleGrid(Pattern):
@@ -1016,7 +1067,7 @@ class CircleGrid(Pattern):
         patternSize = (self.circlePerRow, self.circlePerRow)
         #cv.imwrite('data/gray.png', gray.copy())
 
-        params = cv.SimpleBlobDetector_Params()
+        params = cv.SimpleBlobDetector.Params()
         ic(params.maxArea)
         ic(params.blobColor)
         detector = cv.SimpleBlobDetector.create(params)
@@ -1076,6 +1127,8 @@ class CircleGrid(Pattern):
         init_index=((int)(self.initAngle)%360+45)//90
         if init_index:
             rospy.loginfo(f"修正二维码初始旋转角{self.initAngle:d} {init_index}")
+        # for i in range(4):
+        #     print(f'id={i} centers={allCenterGrid[i]}')
         centersGrid = allCenterGrid[(minIndex-init_index+4)%4]
         centers = centersGrid.reshape(self.circlePerRow * self.circlePerRow, 1, 2)
 
@@ -1179,8 +1232,8 @@ class CircleGrid(Pattern):
         if imageLength==0:
             rospy.logerr(f'无有效照片，无法进行多帧定位')
             return None
-        if imageLength<4:
-            rospy.logerr(f'识别成功图片数量{imageLength}<4，无法进行多帧定位')
+        if imageLength<2:
+            rospy.logerr(f'识别成功图片数量{imageLength}<2，无法进行多帧定位')
             return None
 
         # 计算 target 坐标系下的相机位姿
@@ -1215,6 +1268,9 @@ class CircleGrid(Pattern):
         # 计算 target 坐标系下的相机位姿
         bTt = self.calculateOneloc(newObjectPoints, image_points, trans_pose_to_bTg(pose))
         self.publish_tf(bTt, 'b', 't', 'circleGrid')
+        bTt[0][3] /= 1000.0
+        bTt[1][3] /= 1000.0
+        bTt[2][3] /= 1000.0
         print(f'单次定位整体时间:{(time.time()-stime)*1000:.1f} ms 帧率:{1/(time.time()-stime):.0f}帧/s')
         # print('base to target 的齐次矩阵是：')
         # print(bTt)

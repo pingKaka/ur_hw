@@ -17,9 +17,9 @@ bool has_received = false;
 void classOrderCallback(const std_msgs::String::ConstPtr& msg) {
     if(msg->data!=station_name){
         ROS_INFO("站点名称更新为: %s", msg->data.c_str());
-        station_name = msg->data;
         has_received = true;
     }
+    station_name = msg->data;
 }
 int main(int argc, char *argv[])
 {
@@ -155,6 +155,8 @@ bool record_robot_PJ_part(moveit::planning_interface::MoveGroupInterfacePtr mgpt
                           std::string writefile_name, std::string name)
 {
     geometry_msgs::Pose current_pose = mgptr->getCurrentPose().pose;
+    current_pose = mgptr->getCurrentPose().pose;
+    printf("get pose x=%lf y=%lf z=%lf\n",current_pose.position.x,current_pose.position.y,current_pose.position.z);
     std::vector<double> joints = mgptr->getCurrentJointValues();
 
     // Delay, waiting for the parameter amplitude to complete
@@ -263,6 +265,8 @@ void record_station_PJ_part(moveit::planning_interface::MoveGroupInterfacePtr mg
 {
     ros::NodeHandle nh;
     geometry_msgs::Pose current_pose = mgptr->getCurrentPose().pose;
+    current_pose = mgptr->getCurrentPose().pose;
+    printf("get pose x=%lf y=%lf z=%lf\n",current_pose.position.x,current_pose.position.y,current_pose.position.z);
     boost::shared_ptr<geometry_msgs::PoseStamped const> model_posestamped =
         ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/obj_to_robot_holdon", nh, ros::Duration(5.0));
     if (model_posestamped != nullptr)
@@ -281,7 +285,7 @@ void record_station_PJ_part(moveit::planning_interface::MoveGroupInterfacePtr mg
     geometry_msgs::Pose station_pose;
     station_pose = Record_tool::computeRelPose(model_posestamped->pose, current_pose);
 
-    printf("current %s (%.4lf,%.4lf,%.4lf)->(%.4lf,%.4lf,%.4lf)",name.c_str(),
+    printf("abs->rel %s abs(%.4lf,%.4lf,%.4lf)->rel(%.4lf,%.4lf,%.4lf)",name.c_str(),
                     current_pose.position.x,current_pose.position.y,current_pose.position.z,
                     station_pose.position.x,station_pose.position.y,station_pose.position.z);
 

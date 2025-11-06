@@ -617,6 +617,7 @@ namespace Record_tool
                 pose.orientation.z = value[i]["value"][5].asDouble();
                 pose.orientation.w = value[i]["value"][6].asDouble();
                 rel_pose_[name] = pose;
+                // printf("reload %s z=%lf\n",name.c_str(),pose.position.z);
             }
             // 获取marker_id
             value = root["marker"];

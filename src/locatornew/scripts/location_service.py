@@ -21,15 +21,8 @@ import re  # 新增：处理xacro文件时需要
 from icecream import ic
 # 设备名称与配置文件的映射关系
 deviceNameToConfigFile = {
-    'uv': 'config/紫外光谱仪.json',
-    'fume_hood': 'config/通风橱.json',
-    'auto_balance': 'config/自动进样天平.json',
-    'liquid_injector_1ml': 'config/液体进样器1ml.json',
-    'liquid_injector_5ml': 'config/液体进样器5ml.json',
-    'reagent_rack': 'config/试剂架.json',
-    'elecchemistry': 'config/电化学.json',
-    'centrifuge_purification': 'config/离心纯化.json',
     '121table': 'config/121光学平台.json',
+    '102table': 'config/102桌面.json',
     
     
 }
@@ -37,7 +30,6 @@ deviceNameToConfigFile = {
 
 class Locator:
     """定位器类，同时支持Topic和Service两种请求方式"""
-    
     def __init__(self):
         """初始化节点，创建Topic和Service相关组件"""
         print("尝试初始化节点：location_service（支持Topic和Service）")
@@ -178,9 +170,9 @@ class Locator:
             self.moveAndCapture.savePhotoAndPose(0, True)
             result_bTt = self.pattern.realtime(
                 self.moveAndCapture.camera.saveFrameTo('./img_take/oneloc.png'),
-                self.moveAndCapture.robot.getPoseBase(self.moveAndCapture.arm_short)
+                self.moveAndCapture.robot.getPoseBase()
             )
-            ic(result_bTt)
+            print(result_bTt)
             
             # 处理Aruco字典格式
             if isinstance(result_bTt, dict) and len(result_bTt) > 0:
@@ -198,7 +190,7 @@ class Locator:
             while not rospy.is_shutdown():
                 result_bTt = self.pattern.realtime(
                     self.moveAndCapture.camera.saveFrameTo('./img_take/oneloc.png'),
-                    self.moveAndCapture.robot.getPoseBase(self.moveAndCapture.arm_short)
+                    self.moveAndCapture.robot.getPoseBase()
                 )
             print(f"~~~~~~~~结束实时识别~~~~~~~~")
         except Exception as e:
@@ -298,6 +290,9 @@ class Locator:
 
             # 处理不同任务
             task_result_bTt = None
+            if task=="multiloc" and self.config['multiloc']['allNumber']==0:
+                task='oneloc'
+                self.config['task']='oneloc'
             if task == 'oneloc':
                 task_result_bTt = self.oneloc()
                 if task_result_bTt is None:
@@ -420,10 +415,7 @@ class Locator:
         """写入标定结果到Xacro文件"""
         try:
             arm_robot_description = os.popen("rospack find arm_robot_description").read().strip()
-            if self.config.get('arm', 'left') == 'single':
-                xacro_path = os.path.join(arm_robot_description, "urdf", "single_arm_robot.xacro")
-            else:
-                xacro_path = os.path.join(arm_robot_description, "urdf", "dual_arm_robot.xacro")
+            xacro_path = os.path.join(arm_robot_description, "urdf", "dual_arm_robot.xacro")
             if not os.path.exists(xacro_path):
                 rospy.logerr(f"Xacro文件不存在: {xacro_path}")
                 return False
@@ -443,10 +435,8 @@ class Locator:
         # 目标关节名称
         if self.config.get('arm', 'left') == 'left':
             target_joint_name = "${prefix2}tool0_to_camera_color_optical_frame"
-        elif self.config.get('arm', 'left') == 'right':
-            target_joint_name = "${prefix1}tool0_to_camera_color_optical_frame"
         else:
-            target_joint_name = "tool0_to_camera_color_optical_frame"
+            target_joint_name = "${prefix1}tool0_to_camera_color_optical_frame"
         target_joint_found = False
 
         # 处理文件内容
@@ -503,34 +493,19 @@ class Locator:
             # 未找到关节时添加新关节
             if not target_joint_found:
                 rospy.loginfo(f"未找到关节{target_joint_name}，添加新关节")
-                if self.config.get('arm', 'left')=='single':
-                    new_joint = [
-                        f'  <joint name="{target_joint_name}" type="fixed">\n',
-                        f'    <origin\n',
-                        f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
-                        f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
-                        f'    <parent\n',
-                        f'      link="tool0" />\n',
-                        f'    <child\n',
-                        f'      link="camera_color_optical_frame" />\n',
-                        f'    <axis\n',
-                        f'      xyz="0 0 0" />\n',
-                        f'  </joint>\n'
-                    ]
-                else:
-                    new_joint = [
-                        f'  <joint name="{target_joint_name}" type="fixed">\n',
-                        f'    <origin\n',
-                        f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
-                        f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
-                        f'    <parent\n',
-                        f'      link="${{prefix}}tool0" />\n',
-                        f'    <child\n',
-                        f'      link="${{prefix}}camera_color_optical_frame" />\n',
-                        f'    <axis\n',
-                        f'      xyz="0 0 0" />\n',
-                        f'  </joint>\n'
-                    ]
+                new_joint = [
+                    f'  <joint name="{target_joint_name}" type="fixed">\n',
+                    f'    <origin\n',
+                    f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
+                    f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
+                    f'    <parent\n',
+                    f'      link="${{prefix}}tool0" />\n',
+                    f'    <child\n',
+                    f'      link="${{prefix}}camera_color_optical_frame" />\n',
+                    f'    <axis\n',
+                    f'      xyz="0 0 0" />\n',
+                    f'  </joint>\n'
+                ]
                 # 插入到xacro:macro结束前
                 for i in range(len(new_content)):
                     if "</xacro:macro>" in new_content[i]:

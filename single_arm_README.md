@@ -259,3 +259,13 @@ roslaunch manipulator B_JP_record.launch Record_JPfile:=robot
    ```
 ### *进阶内容*
 - 编写C++函数，实现在抓起方块后，将其从场景中删除并绑定在夹爪末端；在放置方块后，将方块从夹爪末端断开，并添加到场景中。
+
+## 1106任务
+```shell
+echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' | sudo tee /etc/udev/rules.d/80-movidius.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+
+cd ~/C_library/depthai
+python3 install_requirements.py
+python3 depthai_demo.py
+```

@@ -514,6 +514,7 @@ namespace Robot_capsulation
                         geometry_msgs::Pose left_pose;
                         if(!Record_tool::get_abs_pose(left_movename, abs_pose_, left_pose))
                             return "error";
+                        // printf("target pose x=%.1lf y=%.1lf z=%.1lf\n",left_pose.position.x*1000,left_pose.position.y*1000,left_pose.position.z*1000);
                         if(left_robot_ptr->move_targetPose(left_pose,true, echo))
                             return "success";
                     }
@@ -554,12 +555,21 @@ namespace Robot_capsulation
                         geometry_msgs::Pose left_pose;
                         if(!Record_tool::get_rel_pose(left_movename, rel_pose_, left_pose))
                             return "error";
+                        // printf("relative pos x=%.1lf y=%.1lf z=%.1lf\n",left_pose.position.x,left_pose.position.y,left_pose.position.z);
+                        // printf("relative ori x=%.3lf y=%.3lf z=%.3lf w=%.3lf\n",left_pose.orientation.x,left_pose.orientation.y,left_pose.orientation.z,left_pose.orientation.w);
+                        // printf("station pos x=%.1lf y=%.1lf z=%.1lf\n",mesh_pose.position.x,mesh_pose.position.y,mesh_pose.position.z);
+                        // printf("station ori x=%.3lf y=%.3lf z=%.3lf w=%.3lf\n",mesh_pose.orientation.x,mesh_pose.orientation.y,mesh_pose.orientation.z,mesh_pose.orientation.w);
+                        // printf("get left rel_pose z=%lf\n",left_pose.position.x);
                         
                         // 3. 获得站内位姿在world内——位姿
                         tf2::Transform T_left_pose, T_mesh_pose;
                         tf2::fromMsg(left_pose, T_left_pose);
                         tf2::fromMsg(mesh_pose, T_mesh_pose);
-
+                        
+                        // printf("relative pos x=%.1lf y=%.1lf z=%.1lf\n",T_left_pose.getOrigin().x()*1000,T_left_pose.getOrigin().y()*1000,T_left_pose.getOrigin().z()*1000);
+                        // printf("relative ori x=%.3lf y=%.3lf z=%.3lf w=%.3lf\n",T_left_pose.getRotation().x(),T_left_pose.getRotation().y(),T_left_pose.getRotation().z(),T_left_pose.getRotation().w());
+                        // printf("absulte pos x=%.1lf y=%.1lf z=%.1lf\n",T_mesh_pose.getOrigin().x()*1000,T_mesh_pose.getOrigin().y()*1000,T_mesh_pose.getOrigin().z()*1000);
+                        // printf("absulte ori x=%.3lf y=%.3lf z=%.3lf w=%.3lf\n",T_mesh_pose.getRotation().x(),T_mesh_pose.getRotation().y(),T_mesh_pose.getRotation().z(),T_mesh_pose.getRotation().w());
                         tf2::Transform T_Ltool_world = T_mesh_pose * T_left_pose;
                         geometry_msgs::Pose Ltool_world_pose;
                         Ltool_world_pose.position.x = T_Ltool_world.getOrigin().x();
@@ -570,6 +580,7 @@ namespace Robot_capsulation
                         Ltool_world_pose.orientation.z = T_Ltool_world.getRotation().z();
                         Ltool_world_pose.orientation.w = T_Ltool_world.getRotation().w();
 
+                        printf("absulte pose x=%.1lf y=%.1lf z=%.1lf\n",Ltool_world_pose.position.x*1000,Ltool_world_pose.position.y*1000,Ltool_world_pose.position.z*1000);
                         if(left_robot_ptr->move_targetPose(Ltool_world_pose))
                             return "success";
                     }
@@ -891,6 +902,169 @@ namespace Robot_capsulation
                 if(poseJP=="P"&&arm_robot_ptr->move_targetPose(Lpose,true,echo))
                     return "success";
                 else if(poseJP=="J"&&arm_robot_ptr->move_targetJoints(Ljoints,true,echo))
+                    return "success";
+            }return "error";
+        }
+        // 机械臂寸动，关节角或姿态点(x,y,z,r,p,y)传增量
+        else if (first_string == "I")
+        {
+            input=input.substr(2);
+            std::string temp,switch_robot,planner,poseJP;
+            if(temp=input[0],temp=="D"||temp=="L"||temp=="R"||temp=="S"){
+                std::cout << "Goal Robot: " << temp << std::endl;
+                switch_robot=temp;
+                input=input.substr(2);
+            }else
+            {
+                ROS_WARN("Robot: No match found.");
+                return "error";
+            }
+
+            if(temp=input.substr(0,3),temp=="RRT"||temp=="PTP"||temp=="LIN"){
+                std::cout << "Planer Name: " << temp << std::endl;
+                planner=temp;
+                input=input.substr(4);
+            }else{
+                ROS_WARN("Planner: No match found.");
+                return "error";
+            }
+
+            if(temp=input.substr(0,1),temp=="J"||temp=="P"){
+                std::cout << "Pose J/P: " << temp << std::endl;
+                poseJP=temp;
+                input=input.substr(2);
+            }else{
+                ROS_WARN("Pose J/P: No match found.");
+                return "error";
+            }
+
+            std::stringstream ss(input);
+            float Move_vel,Move_acc;
+            std::vector<double>L(6,0),R(6,0);
+            float Lx=0,Ly=0,Lz=0,LR=0,LP=0,LY=0;
+            float Rx=0,Ry=0,Rz=0,RR=0,RP=0,RY=0;
+            ss>>Move_vel>>Move_acc;
+            if(ss.fail()){
+                ROS_WARN("Move vel and acc not found.");
+                return "error";
+            }
+            std::cout<<"Move vel:"<<Move_vel<<"  acc:"<<Move_acc<<std::endl;
+            std::getline(ss>>std::ws,input);
+            ss=std::stringstream(input);
+            std::cout<<input<<std::endl;
+            // ss>>Lname;
+            // std::cout<<"first get:"<<Lname<<std::endl;
+            if(switch_robot=="D"){
+                if(poseJP=="P")
+                    ss>>Lx>>Ly>>Lz>>LR>>LP>>LY>>Rx>>Ry>>Rz>>RR>>RP>>RY;
+                else
+                    ss>>L[0]>>L[1]>>L[2]>>L[3]>>L[4]>>L[5]>>R[0]>>R[1]>>R[2]>>R[3]>>R[4]>>R[5];
+                if(ss.fail()){
+                    ROS_WARN("count of delta != 12");
+                    return "error";
+                }
+            }else if(switch_robot=="L"||switch_robot=="R"||switch_robot=="S"){
+                if(switch_robot=="R"){
+                    if(poseJP=="P") ss>>Rx>>Ry>>Rz>>RR>>RP>>RY;
+                    else            ss>>R[0]>>R[1]>>R[2]>>R[3]>>R[4]>>R[5];
+                }else{
+                    if(poseJP=="P") ss>>Lx>>Ly>>Lz>>LR>>LP>>LY;
+                    else            ss>>L[0]>>L[1]>>L[2]>>L[3]>>L[4]>>L[5];
+                }
+                if(ss.fail()){
+                    ROS_WARN("count of delta != 6");
+                    return "error";
+                }
+            }
+            moveit::planning_interface::MoveGroupInterfacePtr robot_ptr;
+            if(switch_robot=="D"||switch_robot=="S")robot_ptr=move_group_ptr;
+            else if(switch_robot=="L")robot_ptr=left_mgtr;
+            else if(switch_robot=="R")robot_ptr=right_mgtr;
+
+            if (planner== "RRT")
+            {
+                robot_ptr->setPlanningPipelineId("ompl");
+                robot_ptr->setPlannerId("RRT");
+            }
+            else if (planner== "PTP")
+            {
+                robot_ptr->setPlanningPipelineId("pilz_industrial_motion_planner");
+                robot_ptr->setPlannerId("PTP");
+            }
+            else if (planner== "LIN")
+            {
+                if(switch_robot=="D"){
+                    ROS_WARN("Dual arm can't use LIN planner!!!");
+                    return "error";
+                }
+                robot_ptr->setPlanningPipelineId("pilz_industrial_motion_planner");
+                robot_ptr->setPlannerId("LIN");
+            }else{
+                ROS_WARN("No planner %s found!!!",planner.c_str());
+                return "error";
+            }
+            robot_ptr->setMaxVelocityScalingFactor(Move_vel);
+            robot_ptr->setMaxAccelerationScalingFactor(Move_acc);
+            
+            geometry_msgs::Pose Lpose, Rpose;
+            std::vector<double> Ljoints, Rjoints;
+            geometry_msgs::Pose left_pose,right_pose;
+            std::vector<double> left_joints,right_joints;
+            if(switch_robot=="S"){
+                left_pose = move_group_ptr->getCurrentPose().pose;
+                left_joints = move_group_ptr->getCurrentJointValues();
+                for(int i=0;i<6;i++)
+                    left_joints[i]+=L[i]/180.0*pi;
+                left_pose.position.x+=Lx;
+                left_pose.position.y+=Ly;
+                left_pose.position.z+=Lz;
+                double r,p,y;
+                tf2::Quaternion q(left_pose.orientation.x,left_pose.orientation.y,left_pose.orientation.z,left_pose.orientation.w);
+                tf2::Matrix3x3(q).getRPY(r,p,y);
+                xyzrpyToPose(left_pose.position.x,left_pose.position.y,left_pose.position.z,r/pi*180.0,p/pi*180.0,y/pi*180.0,left_pose,"single");
+            }else{
+                left_pose = left_mgtr->getCurrentPose().pose;
+                right_pose = right_mgtr->getCurrentPose().pose;
+                left_joints = left_mgtr->getCurrentJointValues();
+                right_joints = right_mgtr->getCurrentJointValues();
+                for(int i=0;i<6;i++){
+                    left_joints[i]+=L[i]/180.0*pi;
+                    right_joints[i]+=R[i]/180.0*pi;
+                }
+                left_pose.position.x+=Lx;
+                left_pose.position.y+=Ly;
+                left_pose.position.z+=Lz;
+                right_pose.position.x+=Rx;
+                right_pose.position.y+=Ry;
+                right_pose.position.z+=Rz;
+                double r,p,y;
+                tf2::Quaternion lq(left_pose.orientation.x,left_pose.orientation.y,left_pose.orientation.z,left_pose.orientation.w);
+                tf2::Matrix3x3(lq).getRPY(r,p,y);
+                xyzrpyToPose(left_pose.position.x,left_pose.position.y,left_pose.position.z,r/pi*180.0,p/pi*180.0,y/pi*180.0,left_pose,"left");
+
+                tf2::Quaternion rq(right_pose.orientation.x,right_pose.orientation.y,right_pose.orientation.z,right_pose.orientation.w);
+                tf2::Matrix3x3(rq).getRPY(r,p,y);
+                xyzrpyToPose(right_pose.position.x,right_pose.position.y,right_pose.position.z,r/pi*180.0,p/pi*180.0,y/pi*180.0,right_pose,"right");
+            }
+            if(switch_robot=="D"){
+                if(poseJP=="P"&&dual_robot_ptr->move_targetPose(left_pose,right_pose,true,echo))
+                    return "success";
+                else if(poseJP=="J"&&dual_robot_ptr->move_targetJoints(left_joints,right_joints,true,echo))
+                    return "success";
+            }else if(switch_robot=="L"){
+                if(poseJP=="P"&&left_robot_ptr->move_targetPose(left_pose,true,echo))
+                    return "success";
+                else if(poseJP=="J"&&left_robot_ptr->move_targetJoints(left_joints,true,echo))
+                    return "success";
+            }else if(switch_robot=="R"){
+                if(poseJP=="P"&&right_robot_ptr->move_targetPose(right_pose,true,echo))
+                    return "success";
+                else if(poseJP=="J"&&right_robot_ptr->move_targetJoints(right_joints,true,echo))
+                    return "success";
+            }else if(switch_robot=="S"){
+                if(poseJP=="P"&&arm_robot_ptr->move_targetPose(left_pose,true,echo))
+                    return "success";
+                else if(poseJP=="J"&&arm_robot_ptr->move_targetJoints(left_joints,true,echo))
                     return "success";
             }return "error";
         }

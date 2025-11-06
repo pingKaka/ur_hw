@@ -1,22 +1,23 @@
 {
-    "station": "reagent_rack",
+    "station": "102table",
     "arm": "left",
-    "task": "oneloc",
+    "task": "calib",
     "type": "circleGrid",
     "matrix": "A1",
     "imageAndPoseDirectory": "img_take/",
     "poseRelativeFile": "pose.txt",
     "calibResultFile": "avg_tq_bTt.txt",
     "calibMethod": "CALIB_HAND_EYE_TSAI",
-    "moveP_acc": 0.15,
-    "moveP_vel": 0.7,
+    "nonRotating": false,
+    "moveP_acc": 0.3,
+    "moveP_vel": 0.3,
 
     "calib": {
         "overwrite": true,
         "minX": -90,
         "maxX": 90,
         "minY": -90,
-        "maxY": 0,
+        "maxY": 90,
         "minZ": 250,
         "maxZ": 350,
         "pointNumX": 2,
@@ -24,12 +25,12 @@
         "pointNumZ": 2
     },
     "multiloc": {
-        "minX": -120,
-        "maxX": 120,
-        "minY": 0,
-        "maxY": 120,
-        "minZ": 320,
-        "maxZ": 420,
+        "minX": -100,
+        "maxX": 100,
+        "minY": 90,
+        "maxY": 100,
+        "minZ": 150,
+        "maxZ": 250,
         "allNumber": 10
     },
 
@@ -51,6 +52,6 @@
         "circleDistance": 7,
         "circleRadius": 1.75,
         "circlePerRow": 7,
-        "initAngle": 180
+        "initAngle": 0
     }
 }

@@ -8,6 +8,7 @@
     "poseRelativeFile": "位姿数据文件名，记录机械臂位姿信息的文件名称。默认值：'pose.txt'",
     "calibResultFile": "标定结果文件名，保存标定得到的变换矩阵等结果的文件名称。默认值：'avg_tq_bTt.txt'",
     "calibMethod": "标定方法，手眼标定所采用的算法。可选值：'CALIB_HAND_EYE_TSAI'、'CALIB_HAND_EYE_PARK'、'CALIB_HAND_EYE_HORAUD'、'CALIB_HAND_EYE_ANDREFF'、'CALIB_HAND_EYE_DANIILIDIS'",
+    "nonRotating": "二维码消除初始旋转，true或false",
     "moveP_acc": "多次拍照机械臂运动加速度0-1",
     "moveP_vel": "多次拍照机械臂运动速度0-1",
 

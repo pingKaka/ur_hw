@@ -38,7 +38,7 @@ class Station_command:
 
 
     # 命令发布与回调
-    def test_command_pub(self, operation_name: str, force: bool):
+    def test_command_pub(self, operation_name: str):
         '''
         operation_name后可以跟@....$.....#....形式的参数
         其中@和$会将参数替换到每一行指令的@和$位置上
@@ -211,9 +211,12 @@ class Station_command:
 def continue_or_not():
     if input('continue Y/N:') not in "Yy":
         pass
-def run(op,force=False):
+def run(*args):
     # continue_or_not()
-    return ops.test_command_pub(op,force)
+    if len(args)==1:
+        return ops.test_command_pub(args[0])
+    elif len(args)==2:
+        return Station_command(args[0]).test_command_pub(args[1])
 if __name__ == '__main__':
     rospy.init_node('fake_command', anonymous=True)
     Run_totalnum = 1

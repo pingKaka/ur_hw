@@ -15,16 +15,18 @@ gnome-terminal --tab -- bash -c "roslaunch single_robot_moveit_config ur5e_movei
 gnome-terminal --tab -- bash -c "roslaunch manipulator single_arm_rviz.launch; exec bash"
 # sleep 5
 
-
 # # 启动夹爪服务
 gnome-terminal --tab -- bash -c "roslaunch gripper_modbus Gripper_ModbusControl.launch type:=RGI port:=/dev/ttyUSB0 prefix:=RGI; exec bash"
 gnome-terminal --tab -- bash -c "roslaunch gripper_modbus Gripper_ModbusControl.launch type:=PGI port:=/dev/ttyUSB1 prefix:=PGI; exec bash"
+
+# 启动定位服务
+gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch; exec bash"
 
 #sudo udevadm trigger
 #ll /dev/ |grep ttyUSB
 
 # 启动A_gel_start
-gnome-terminal --tab -- bash -c "roslaunch manipulator A_robot_start.launch Dual_arm_flag:=false Dashboard_flag:=true Locator_flag:=false Load_JPfile:=robot; exec bash"
+gnome-terminal --tab -- bash -c "roslaunch manipulator A_robot_start.launch Dual_arm_flag:=false Dashboard_flag:=true Locator_flag:=true Load_JPfile:=robot; exec bash"
 sleep 8
 
 gnome-terminal --tab -- bash -c "roslaunch manipulator B_JP_record.launch Record_JPfile:=robot; exec bash"
