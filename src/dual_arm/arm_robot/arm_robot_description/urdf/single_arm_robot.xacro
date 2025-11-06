@@ -108,8 +108,8 @@
   <link name="camera_color_optical_frame"/>
   <joint name="tool0_to_camera_color_optical_frame" type="fixed">
     <origin
-      xyz="0 0 0"
-      rpy="0 0 -0.7854" />
+      xyz="-0.1 -0.1 0.1"
+      rpy="-0.7854 0 -0.7854" />
     <parent
       link="tool0" />
     <child

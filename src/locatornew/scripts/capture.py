@@ -16,75 +16,175 @@ from scipy.spatial.transform import Rotation as R  # 旋转矩阵处理库
 from icecream import ic  # 调试工具，用于打印变量详情
 from robot_controller import Robot  # 自定义机械臂控制类（封装机械臂运动API）
 from calculate_rotate import *  # 自定义坐标变换/旋转计算模块
-
+from sensor_msgs.msg import Image  # ROS图像消息类型
+from cv_bridge import CvBridge  # ROS图像与OpenCV图像转换工具
 
 # ------------------------------ Camera类：RealSense相机控制 ------------------------------
 class Camera:
-    """RealSense相机控制类，实现相机初始化、图像捕获、图像保存功能"""
-    
-    def __init__(self):
-        """初始化相机，配置RGB流（1920x1080分辨率，30fps，BGR格式）"""
+    """
+    通用相机控制类：
+    - 支持从rosparam读取图像话题名称（参数名：camera_image_topic）
+    - 若话题为"realsense"，使用RealSense SDK（rs2）直接获取图像
+    - 若为其他话题（如OAK相机的/stereo_inertial_publisher/color/image），从ROS话题订阅获取图像
+    实现功能：相机初始化、图像捕获、图像保存
+    """
+
+    def __init__(self,camera_image_topic,gTc,camera_matrix,dist_coeffs):
+        """初始化相机：读取rosparam配置，根据话题类型选择初始化方式"""
+        # 1. 初始化ROS节点（若外部未初始化，此处自动初始化，避免订阅失败）
+        if not rospy.core.is_initialized():
+            rospy.init_node("camera_controller", anonymous=True)
+        
+        # 2. 从rosparam读取图像话题名称，默认值设为"realsense"（兼容原RealSense逻辑）
+        self.camera_image_topic = camera_image_topic
+        self.gTc = gTc
+        self.camera_matrix = camera_matrix
+        self.dist_coeffs = dist_coeffs
+        rospy.loginfo(f"当前相机图像配置：camera_image_topic = {self.camera_image_topic}")
+
+        # 3. 初始化核心变量
+        self.pipe = None  # RealSense流水线对象（仅realsense模式使用）
+        self.bridge = CvBridge()  # ROS-OpenCV图像转换器（仅话题订阅模式使用）
+        self.latest_frame = None  # 缓存最新图像帧（话题订阅模式：避免阻塞）
+        self.frame_lock = False  # 帧同步锁（防止多线程数据冲突）
+
+        # 4. 根据话题类型初始化相机
+        if self.camera_image_topic=='':
+            # 模式1：RealSense直接连接（使用rs2 SDK）
+            self._init_realsense()
+        else:
+            # 模式2：ROS话题订阅（如OAK相机的/stereo_inertial_publisher/color/image）
+            self._init_ros_subscriber()
+
+    def _init_realsense(self):
+        """私有方法：初始化RealSense相机（原rs2逻辑）"""
         try:
-            self.pipe = rs2.pipeline()  # 创建相机流水线（管理相机数据流）
-            config = rs2.config()  # 创建配置对象
-            # 启用RGB流：分辨率1920x1080，格式BGR8（OpenCV兼容），帧率30
+            self.pipe = rs2.pipeline()
+            config = rs2.config()
+            # 配置RGB流：1920x1080分辨率，BGR8格式（OpenCV兼容），30fps
             config.enable_stream(rs2.stream.color, 1920, 1080, rs2.format.bgr8, 30)
-            self.profile = self.pipe.start(config)  # 启动相机并应用配置
+            self.profile = self.pipe.start(config)
+            rospy.loginfo("RealSense相机初始化成功，已启动RGB流")
         except Exception as e:
-            print(f"相机启动失败: {e}")  # 捕获启动异常（如相机未连接、权限不足）
-            self.pipe = None  # 标记相机未初始化成功
+            rospy.logerr(f"RealSense相机初始化失败: {str(e)}")
+            self.pipe = None
+
+    def _init_ros_subscriber(self):
+        """私有方法：初始化ROS图像话题订阅（如OAK相机）"""
+        try:
+            # 订阅目标图像话题，回调函数更新最新帧
+            self.subscriber = rospy.Subscriber(
+                self.camera_image_topic,  # 从rosparam获取的话题名（如/stereo_inertial_publisher/color/image）
+                Image,             # ROS图像消息类型
+                self._ros_frame_callback,  # 回调函数
+                queue_size=1       # 队列大小：仅缓存最新1帧，避免延迟
+            )
+            # 等待1秒，确保订阅成功并获取第一帧
+            rospy.sleep(1)
+            if self.latest_frame is None:
+                rospy.logwarn(f"话题 {self.camera_image_topic} 已订阅，但暂未收到图像帧（请检查话题是否有数据）")
+            else:
+                rospy.loginfo(f"ROS话题 {self.camera_image_topic} 订阅成功，已获取最新图像帧")
+        except Exception as e:
+            rospy.logerr(f"ROS话题订阅初始化失败: {str(e)}")
+            self.subscriber = None
+
+    def _ros_frame_callback(self, msg):
+        """私有方法：ROS图像话题回调函数（更新最新帧缓存）"""
+        if self.frame_lock:
+            return  # 若当前帧正在被读取，跳过本次回调（避免数据冲突）
+        try:
+            # 将ROS Image消息转换为OpenCV格式（BGR8：与RealSense输出格式一致，保证接口统一）
+            cv_frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            self.latest_frame = cv_frame  # 缓存最新帧
+        except Exception as e:
+            rospy.logerr(f"ROS图像转换失败: {str(e)}")
 
     def saveFrameTo(self, path):
         """
-        捕获一帧RGB图像并保存到指定路径
+        捕获一帧图像并保存到指定路径（两种模式通用）
         :param path: 图像保存路径（如"./img_take/0.png"）
+        :return: 成功返回OpenCV格式图像（numpy数组），失败返回None
         """
-        if self.pipe is None:
-            print("相机未成功启动，无法保存帧。")
-            return
+        # 1. 获取当前帧（区分两种模式）
+        if self.camera_image_topic.lower() == "realsense":
+            # RealSense模式：直接从流水线获取
+            if self.pipe is None:
+                rospy.logerr("RealSense相机未初始化，无法保存帧")
+                return None
+            try:
+                frames = self.pipe.wait_for_frames()
+                cv_frame = np.asarray(frames.get_color_frame().get_data())
+            except Exception as e:
+                rospy.logerr(f"RealSense帧获取失败: {str(e)}")
+                return None
+        else:
+            # ROS话题模式：从缓存获取最新帧
+            if self.latest_frame is None:
+                rospy.logerr(f"未从话题 {self.camera_image_topic} 收到图像帧，无法保存")
+                return None
+            # 加锁：防止读取时回调函数更新帧（避免数据截断）
+            self.frame_lock = True
+            cv_frame = self.latest_frame.copy()  # 复制帧数据，避免原数据被修改
+            self.frame_lock = False
+
+        # 2. 保存图像
         try:
-            frames = self.pipe.wait_for_frames()  # 等待相机帧数据（阻塞，直到获取帧）
-            # 提取RGB帧并转换为numpy数组（OpenCV可处理格式）
-            img = np.asarray(frames.get_color_frame().get_data())
-            cv2.imwrite(path, img)  # 保存图像到指定路径
-            print(f"帧已保存到 {path}")
-            return img
+            cv2.imwrite(path, cv_frame)
+            rospy.loginfo(f"图像已保存到: {path}")
+            return cv_frame
         except Exception as e:
-            print(f"保存帧时出错: {e}")  # 捕获保存异常（如路径不存在、磁盘满）
+            rospy.logerr(f"图像保存失败: {str(e)}")
+            return None
 
     def getRGBFrame(self):
         """
-        获取原始RGB帧（不保存，用于实时处理）
-        :return: 成功返回rs2.color_frame对象，失败返回None
+        获取实时RGB帧（两种模式通用，返回OpenCV格式，便于后续处理）
+        :return: 成功返回OpenCV图像（numpy数组，BGR8格式），失败返回None
         """
-        if self.pipe is None:
-            print("相机未成功启动，无法获取帧。")
-            return None
-        try:
-            # stime=time.time()
-            # 等待帧并提取RGB帧（不转换为numpy数组，保留原始格式）
-            frame = self.pipe.wait_for_frames().get_color_frame()
-            # print(f'取图时间 {(time.time()-stime)*1000:.1f} ms')
-            return frame
-        except Exception as e:
-            print(f"获取帧时出错: {e}")
-            return None
+        if self.camera_image_topic.lower() == "realsense":
+            # RealSense模式：直接获取原始帧并转换为OpenCV格式
+            if self.pipe is None:
+                rospy.logerr("RealSense相机未初始化，无法获取帧")
+                return None
+            try:
+                frames = self.pipe.wait_for_frames()
+                cv_frame = np.asarray(frames.get_color_frame().get_data())
+                return cv_frame
+            except Exception as e:
+                rospy.logerr(f"RealSense帧获取失败: {str(e)}")
+                return None
+        else:
+            # ROS话题模式：从缓存获取最新帧
+            if self.latest_frame is None:
+                rospy.logwarn(f"未从话题 {self.camera_image_topic} 收到图像帧")
+                return None
+            # 加锁复制，确保数据完整性
+            self.frame_lock = True
+            cv_frame = self.latest_frame.copy()
+            self.frame_lock = False
+            return cv_frame
 
     def __del__(self):
-        """析构函数：对象销毁时停止相机，释放硬件资源"""
+        """析构函数：释放资源（避免内存泄漏）"""
+        # 1. 停止RealSense流水线
         if self.pipe is not None:
-            self.pipe.stop()  # 停止相机流水线，避免资源泄漏
-
-
-# 实例化Camera对象（全局单例，供MoveAndCapture类使用）
-camera = Camera()
+            self.pipe.stop()
+            rospy.loginfo("RealSense相机流水线已停止")
+        # 2. 取消ROS话题订阅
+        if hasattr(self, "subscriber") and self.subscriber is not None:
+            self.subscriber.unregister()
+            rospy.loginfo(f"ROS话题 {self.camera_image_topic} 订阅已取消")
+        # 3. 关闭ROS节点（若当前节点是本类初始化的）
+        if rospy.core.is_initialized() and rospy.get_name() == "/camera_controller":
+            rospy.signal_shutdown("相机控制对象已销毁，关闭节点")
 
 
 # ------------------------------ MoveAndCapture类：机械臂运动+图像捕获协同控制 ------------------------------
 class MoveAndCapture:
     """机械臂运动与相机捕获协同类，根据配置文件控制机械臂移动到目标位姿并拍照，记录位姿数据"""
     
-    def __init__(self, config):
+    def __init__(self, config, camera):
         """
         初始化协同控制对象
         :param bTt: 基础坐标系到目标坐标系的变换矩阵（4x4，用于坐标转换）
@@ -121,21 +221,7 @@ class MoveAndCapture:
         if self.config.get('moveP_acc') is None:
             self.config['moveP_acc']=0.1
         self.publish_tf=None
-        # 读取相机内参和畸变参数（用于坐标变换）
-        self.gTc, self.camera_matrix, self.dist_coeffs = self.readIntrinsic()
-    def read_gTc(self):
-        # 获取相机内参
-        gTc = np.loadtxt(f"matrix/{self.config['arm']}_gTc.txt", delimiter=',')
-        return gTc
-    def readCameraMatrix(self):
-        camera_matrix = np.loadtxt(f"matrix/{self.config['arm']}_camera_matrix.txt", delimiter=',')
-        dist_coeffs = np.loadtxt(f"matrix/{self.config['arm']}_dist_coeffs.txt", delimiter=',')
-        return camera_matrix, dist_coeffs
-    # 读取相机内参
-    def readIntrinsic(self):
-        gTc = self.read_gTc()
-        camera_matrix, dist_coeffs = self.readCameraMatrix()
-        return gTc, camera_matrix, dist_coeffs
+        self.arm_short=self.config['arm'][0].upper()
     def readConfig(self, file):
         """
         读取任务配置文件（JSON格式），解析拍摄参数
@@ -208,12 +294,12 @@ class MoveAndCapture:
         :param nums: 拍摄序号（用于图像命名和位姿记录ID）
         """
         # 1. 获取机械臂运动前的位姿（基础坐标系下，单位：米/弧度）
-        initial_state = self.robot.getPoseBase()
+        initial_state = self.robot.getPoseBase(self.arm_short)
         # 2. 拍摄图像并保存（命名格式：序号.png，如0.png）
         image_name='oneloc.png' if oneloc else f'multiloc_{nums}.png'
         self.camera.saveFrameTo(f'{self.file_path}/{image_name}')
         # 3. 获取机械臂运动后的位姿（用于计算运动前后的偏差）
-        final_state = self.robot.getPoseBase()
+        final_state = self.robot.getPoseBase(self.arm_short)
 
         # 4. 计算位姿变化量（转换为毫米单位，方便观察）
         delta_state = (np.array(final_state) - np.array(initial_state)) * 1000
@@ -236,7 +322,7 @@ class MoveAndCapture:
 
         # 1. 坐标变换：将目标坐标系下的点转换为机械臂基础坐标系下的点+姿态
         # （调用自定义函数transform_xyz_tTc_to_bTc，输入：目标点、bTt变换矩阵、坐标系标识）
-        target_bTg = transform_xyz_tTc_to_bTg(targetXYZ_tTc, self.bTt, self.gTc, self.config['matrix'], self.camera_matrix, self.dist_coeffs)
+        target_bTg = transform_xyz_tTc_to_bTg(targetXYZ_tTc, self.bTt, self.camera.gTc, self.config['matrix'], self.camera.camera_matrix, self.camera.dist_coeffs)
         # if self.publish_tf is not None:
         #     self.publish_tf(target_bTg, 'b', 'g')
         # 7. 从齐次变换矩阵中提取平移向量和旋转向量（格式适配机械臂控制）
@@ -258,7 +344,7 @@ class MoveAndCapture:
         # 3. 构造机械臂目标位姿（[x, y, z, rx, ry, rz]，单位：米/弧度）
         pose = [point[0], point[1], point[2], rpy_deg[0], rpy_deg[1], rpy_deg[2]]
         # 4. 控制机械臂移动到目标位姿（速度0.2m/s，加速度0.1m/s²，调用Robot类的moveP函数）
-        self.robot.moveP(self.config['moveP_vel'], self.config['moveP_acc'], pose)
+        self.robot.moveP(self.config['moveP_vel'], self.config['moveP_acc'], pose, self.arm_short)
 
         # 5. 等待机械臂稳定（0.1秒延迟，避免运动未结束就拍照）
         time.sleep(.1)

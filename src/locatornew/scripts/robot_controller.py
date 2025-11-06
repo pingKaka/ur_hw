@@ -26,7 +26,7 @@ class Robot:
         # 配置参数
         self.operation_name = "locator_operation"
         self.station_name = "locator_station"
-        self.arm_tool_map = {"L": "left_tool0", "R": "right_tool0"}  # 机械臂与工具坐标系映射
+        self.arm_tool_map = {"L": "left_tool0", "R": "right_tool0", "S": "tool0"}  # 机械臂与工具坐标系映射
 
     def getPoseBase(self, arm: str = "L") -> Optional[np.ndarray]:
         """

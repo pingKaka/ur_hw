@@ -5,7 +5,10 @@ gnome-terminal --tab -- bash -c  "roscore; exec bash"
 sleep 2
 
 # 启动UR机器人驱动
+gnome-terminal --tab -- bash -c "source ~/C_library/dai_ws/devel/setup.bash; roslaunch depthai_examples stereo_inertial_node.launch enableSpatialDetection:=False syncNN:=False enableRviz:=False; exec bash"
+sleep 2
 gnome-terminal --tab -- bash -c "roslaunch ur_robot_driver ur5e_bringup.launch robot_ip:=192.168.60.1; exec bash"
+gnome-terminal --tab -- bash -c "rosrun tf static_transform_publisher 0 0 0 0 1.5708 1.5708 oak-d_frame camera_color_optical_frame 100; exec bash"
 sleep 5
 
 # 启动双机器人MoveIt配置
@@ -20,7 +23,7 @@ gnome-terminal --tab -- bash -c "roslaunch gripper_modbus Gripper_ModbusControl.
 gnome-terminal --tab -- bash -c "roslaunch gripper_modbus Gripper_ModbusControl.launch type:=PGI port:=/dev/ttyUSB1 prefix:=PGI; exec bash"
 
 # 启动定位服务
-gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch; exec bash"
+gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch camera_image_topic:=/stereo_inertial_publisher/color/image camera_info_topic:=/stereo_inertial_publisher/color/camera_info camera_gTc_flag:=true; exec bash"
 
 #sudo udevadm trigger
 #ll /dev/ |grep ttyUSB

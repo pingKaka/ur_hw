@@ -5,38 +5,36 @@ from std_msgs.msg import String
 import numpy as np
 import os
 import sys
+import tf  # ROS 1 的 tf 模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import cv2
 import pyrealsense2 as rs2
+from sensor_msgs.msg import CameraInfo
+from geometry_msgs.msg import TransformStamped
 from scipy.spatial.transform import Rotation as R
 from geometry_msgs.msg import Pose, PoseStamped
 from std_msgs.msg import Float32MultiArray
 # 导入自定义服务类型
-from locatornew.srv import Location, LocationRequest, LocationResponse  # 包含新增的Locator
-from capture import *
+from locatornew.srv import Location, LocationRequest, LocationResponse
+import capture
 from analyze import *
 import shutil
 import traceback
-import re  # 新增：处理xacro文件时需要
+import re
 from icecream import ic
+
 # 设备名称与配置文件的映射关系
 deviceNameToConfigFile = {
     '121table': 'config/121光学平台.json',
     '102table': 'config/102桌面.json',
-    
-    
 }
-
 
 class Locator:
     """定位器类，同时支持Topic和Service两种请求方式"""
     def __init__(self):
-        """初始化节点，创建Topic和Service相关组件"""
-        print("尝试初始化节点：location_service（支持Topic和Service）")
-        self.tf_broadcaster = tf2_ros.TransformBroadcaster()
         self.current_tf = {}
-        self.last_tf={}
-        self.alpha=0.3
+        self.last_tf = {}
+        self.alpha = 0.3
         self.tf_timer_running = False
         self.tf_timer_thread = None
         self.start_tf_timer()  # 启动定时器
@@ -54,6 +52,10 @@ class Locator:
         # 初始化ROS节点
         rospy.init_node('location_service', anonymous=False)
 
+        print("尝试初始化节点：location_service（支持Topic和Service）")
+        self.tf_broadcaster = tf.TransformBroadcaster()
+        # ROS 1 中无需手动创建 Buffer，直接初始化 TransformListener
+        self.tf_listener = tf.TransformListener()  # 内部已包含缓存机制
         # Topic相关
         self.obj_bTt_pub = rospy.Publisher('/obj_to_robot_holdon', PoseStamped, queue_size=10)
         self.obj_name_pub = rospy.Publisher('/class_order_holdon', String, queue_size=10)
@@ -69,6 +71,229 @@ class Locator:
         print("节点初始化完成：location_service（支持Topic和Service）")
         print("订阅话题：/locator_topic")
         print("提供服务：/locator_service")
+class Locator:
+    """定位器类，同时支持Topic和Service两种请求方式"""
+    def __init__(self):
+        print("尝试初始化节点：location_service（支持Topic和Service）")
+        self.current_tf = {}
+        self.last_tf = {}
+        self.alpha = 0.3
+        self.tf_timer_running = False
+        self.tf_timer_thread = None
+        self.start_tf_timer()  # 启动定时器
+
+        self.config = None
+        self.pose = None
+        self.moveAndCapture = None
+        self.pattern = None
+
+        # 结果缓存变量
+        self.cached_bTt = None  # 4x4变换矩阵
+        self.cached_station = None
+        self.publish_timer = None  # 10Hz发布定时器
+
+        # 初始化ROS节点
+        rospy.init_node('location_service', anonymous=False)
+
+        self.tf_broadcaster = tf.TransformBroadcaster()
+        self.tf_listener = tf.TransformListener()  # 内部已包含缓存机制
+        
+        self.camera_gTc_flag = None
+        self.camera_info_topic = None
+        self.camera_image_topic = None
+        self.camera_info = None  # 存储CameraInfo消息
+        self.gTc = None  # 相机外参（从TF获取）
+        self.camera_matrix = None  # 等效于内参矩阵K
+        self.dist_coeffs = None  # 等效于畸变系数D
+
+        # Topic相关
+        self.obj_bTt_pub = rospy.Publisher('/obj_to_robot_holdon', PoseStamped, queue_size=10)
+        self.obj_name_pub = rospy.Publisher('/class_order_holdon', String, queue_size=10)
+        self.locator_sub = rospy.Subscriber('/locator_topic', String, self.locator_topic_callback)
+
+        # Service相关
+        self.locator_service = rospy.Service(
+            '/locator_service',
+            Location,
+            self.locator_service_callback
+        )
+
+        print("节点初始化完成：location_service（支持Topic和Service）")
+        print("订阅话题：/locator_topic")
+        print("提供服务：/locator_service")
+
+
+    def camera_info_callback(self, msg):
+        """相机信息回调：更新内参和畸变矩阵"""
+        self.camera_info = msg
+        # 赋值给对外暴露的camera_matrix和dist_coeffs
+        self.camera_matrix = np.array(msg.K).reshape(3, 3)
+        self.dist_coeffs = np.array(msg.D)
+        rospy.logdebug("已更新相机内参和畸变矩阵")
+
+
+    def get_tf_transform(self):
+        """根据arm配置获取对应的TF变换（返回4x4变换矩阵）"""
+        if not self.config or 'arm' not in self.config:
+            rospy.logerr("未配置arm参数（left/right/single）")
+            return None
+
+        arm_type = self.config['arm']
+        # 定义父坐标系和子坐标系（根据实际TF树调整）
+        if arm_type == 'left':
+            parent_frame = 'left_tool0'
+            child_frame = 'left_camera_color_optical_frame'
+        elif arm_type == 'right':
+            parent_frame = 'right_tool0'
+            child_frame = 'right_camera_color_optical_frame'
+        elif arm_type == 'single':
+            parent_frame = 'tool0'
+            child_frame = 'camera_color_optical_frame'
+        else:
+            rospy.logerr(f"无效的arm类型: {arm_type}（应为left/right/single）")
+            return None
+
+        try:
+            # 等待TF变换可用（超时5秒）
+            self.tf_listener.waitForTransform(
+                parent_frame,
+                child_frame,
+                rospy.Time(0),  # 获取最新的变换
+                rospy.Duration(5.0)
+            )
+            
+            # 获取变换（平移+旋转）
+            (trans, rot) = self.tf_listener.lookupTransform(
+                parent_frame,
+                child_frame,
+                rospy.Time(0)
+            )
+            
+            # 转换为4x4变换矩阵
+            return self.trans_rot_to_matrix(trans, rot)
+        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
+            rospy.logerr(f"获取TF变换失败 ({parent_frame} -> {child_frame}): {str(e)}")
+            return None
+
+    def trans_rot_to_matrix(self, trans, rot):
+        """将平移向量和旋转四元数转换为4x4变换矩阵"""
+        # 生成旋转矩阵（3x3）
+        rotation_matrix = tf.transformations.quaternion_matrix(rot)[:3, :3]
+        # 生成4x4变换矩阵
+        transform_matrix = tf.transformations.identity_matrix()
+        transform_matrix[:3, :3] = rotation_matrix  # 旋转部分
+        transform_matrix[:3, 3] = trans  # 平移部分
+        return transform_matrix
+
+
+    def wait_for_camera_params(self):
+        """等待相机参数和TF变换就绪（10秒超时），并以普通浮点数格式写入文件"""
+        # 确保存储目录存在
+        if not os.path.exists("matrix"):
+            os.makedirs("matrix")
+
+        start_time = time.time()
+        timeout = 10.0  # 超时时间10秒
+
+        # 处理相机内参
+        if self.camera_info_topic != '':
+            # 循环等待内参，直到获取成功或超时
+            while self.camera_matrix is None:
+                if time.time() - start_time > timeout:
+                    raise TimeoutError("等待相机内参超时（10秒）")
+                rospy.loginfo(f"等待相机内参话题 {self.camera_info_topic}...")
+                rospy.sleep(0.5)  # 缩短等待间隔，提高响应速度
+
+            # 内参获取成功后写入文件
+            if self.camera_matrix is not None:
+                matrix_path = f"matrix/{self.config['arm']}_camera_matrix.txt"
+                np.savetxt(
+                    matrix_path,
+                    self.camera_matrix,
+                    delimiter=',',
+                    fmt='%.6f'
+                )
+                rospy.loginfo(f"相机内参已写入 {matrix_path}")
+
+            # 循环等待畸变系数
+            while self.dist_coeffs is None:
+                if time.time() - start_time > timeout:
+                    raise TimeoutError("等待相机畸变系数超时（10秒）")
+                rospy.loginfo(f"等待相机畸变系数话题 {self.camera_info_topic}...")
+                rospy.sleep(0.5)
+
+            if self.dist_coeffs is not None:
+                dist_path = f"matrix/{self.config['arm']}_dist_coeffs.txt"
+                np.savetxt(
+                    dist_path,
+                    self.dist_coeffs,
+                    delimiter=',',
+                    fmt='%.6f'
+                )
+                rospy.loginfo(f"畸变系数已写入 {dist_path}")
+            self.camera_info_topic = ''  # 标记为已处理
+        else:
+            # 从文件加载内参（立即加载，不等待）
+            try:
+                self.camera_matrix = np.loadtxt(f"matrix/{self.config['arm']}_camera_matrix.txt", delimiter=',')
+                self.dist_coeffs = np.loadtxt(f"matrix/{self.config['arm']}_dist_coeffs.txt", delimiter=',')
+            except FileNotFoundError:
+                raise FileNotFoundError("相机内参文件不存在，请先通过话题获取并保存")
+
+        # 重置超时计时（单独计算外参等待时间）
+        start_time_gTc = time.time()
+
+        # 处理TF变换（外参gTc）
+        if self.camera_gTc_flag:
+            # 循环等待TF变换，直到获取成功或超时
+            self.gTc = None
+            while self.gTc is None:
+                if time.time() - start_time_gTc > timeout:
+                    raise TimeoutError("等待相机外参（TF变换）超时（10秒）")
+                self.gTc = self.get_tf_transform()
+                rospy.loginfo("等待相机外参（TF变换）...")
+                rospy.sleep(0.5)
+
+            # 外参获取成功后写入文件
+            if self.gTc is not None:
+                gt_path = f"matrix/{self.config['arm']}_gTc.txt"
+                np.savetxt(
+                    gt_path,
+                    self.gTc,
+                    delimiter=',',
+                    fmt='%.10f'
+                )
+                rospy.loginfo(f"TF变换（gTc）已写入 {gt_path}")
+            self.camera_gTc_flag = ''  # 标记为已处理
+        else:
+            # 从文件加载外参
+            try:
+                self.gTc = np.loadtxt(f"matrix/{self.config['arm']}_gTc.txt", delimiter=',')
+            except FileNotFoundError:
+                raise FileNotFoundError("相机外参文件不存在，请先通过TF获取并保存")
+
+        rospy.loginfo("相机参数和TF变换已就绪")
+
+
+    @staticmethod
+    def transform_to_matrix(transform):
+        """将TF的Transform消息转换为4x4变换矩阵"""
+        # 平移向量
+        t = np.array([
+            transform.transform.translation.x,
+            transform.transform.translation.y,
+            transform.transform.translation.z
+        ])
+        # 旋转四元数 -> 旋转矩阵
+        q = transform.transform.rotation
+        rot = R.from_quat([q.x, q.y, q.z, q.w]).as_matrix()  # 3x3旋转矩阵
+
+        # 构造4x4变换矩阵
+        matrix = np.eye(4)
+        matrix[:3, :3] = rot
+        matrix[:3, 3] = t
+        return matrix
+    
     def start_tf_timer(self):
         """启动独立的TF发布定时器线程"""
         if not self.tf_timer_running:
@@ -170,7 +395,7 @@ class Locator:
             self.moveAndCapture.savePhotoAndPose(0, True)
             result_bTt = self.pattern.realtime(
                 self.moveAndCapture.camera.saveFrameTo('./img_take/oneloc.png'),
-                self.moveAndCapture.robot.getPoseBase()
+                self.moveAndCapture.robot.getPoseBase(self.moveAndCapture.arm_short)
             )
             print(result_bTt)
             
@@ -190,7 +415,7 @@ class Locator:
             while not rospy.is_shutdown():
                 result_bTt = self.pattern.realtime(
                     self.moveAndCapture.camera.saveFrameTo('./img_take/oneloc.png'),
-                    self.moveAndCapture.robot.getPoseBase()
+                    self.moveAndCapture.robot.getPoseBase(self.moveAndCapture.arm_short)
                 )
             print(f"~~~~~~~~结束实时识别~~~~~~~~")
         except Exception as e:
@@ -233,7 +458,30 @@ class Locator:
             else:
                 merged[key] = value
         return merged
+    def _camera_generator(self):
+        # 从参数服务器获取话题名
+        self.camera_image_topic = rospy.get_param("~camera_image_topic", "")
+        if self.camera_info_topic is None:
+            self.camera_info_topic = rospy.get_param("~camera_info_topic", "")
+            # 订阅相机信息话题
+            self.camera_info_sub = rospy.Subscriber(
+                self.camera_info_topic,
+                CameraInfo,
+                self.camera_info_callback
+            )
+            rospy.loginfo(f"订阅相机信息话题: {self.camera_info_topic}")
+        if self.camera_gTc_flag is None:
+            self.camera_gTc_flag = rospy.get_param("~camera_gTc_flag", "")
 
+
+        # 等待相机信息和TF变换就绪后再初始化Camera
+        self.wait_for_camera_params()
+        self.camera = capture.Camera(
+            self.camera_image_topic,
+            self.gTc,
+            self.camera_matrix,
+            self.dist_coeffs
+        )
     def _common_location_logic(self, command_dict):
         """通用定位逻辑（Topic和Service共用）"""
         try:
@@ -268,7 +516,8 @@ class Locator:
             print(json.dumps(self.config, indent=4, ensure_ascii=False))
 
             # 初始化移动捕获和标定板
-            self.moveAndCapture = MoveAndCapture(self.config)
+            self._camera_generator()
+            self.moveAndCapture = capture.MoveAndCapture(self.config,self.camera)
             marker_type = self.config.get('type', '')
             task = self.config.get('task', '')
 
@@ -415,7 +664,10 @@ class Locator:
         """写入标定结果到Xacro文件"""
         try:
             arm_robot_description = os.popen("rospack find arm_robot_description").read().strip()
-            xacro_path = os.path.join(arm_robot_description, "urdf", "dual_arm_robot.xacro")
+            if self.config.get('arm', 'left') == 'single':
+                xacro_path = os.path.join(arm_robot_description, "urdf", "single_arm_robot.xacro")
+            else:
+                xacro_path = os.path.join(arm_robot_description, "urdf", "dual_arm_robot.xacro")
             if not os.path.exists(xacro_path):
                 rospy.logerr(f"Xacro文件不存在: {xacro_path}")
                 return False
@@ -435,8 +687,10 @@ class Locator:
         # 目标关节名称
         if self.config.get('arm', 'left') == 'left':
             target_joint_name = "${prefix2}tool0_to_camera_color_optical_frame"
-        else:
+        elif self.config.get('arm', 'left') == 'right':
             target_joint_name = "${prefix1}tool0_to_camera_color_optical_frame"
+        else:
+            target_joint_name = "tool0_to_camera_color_optical_frame"
         target_joint_found = False
 
         # 处理文件内容
@@ -493,19 +747,34 @@ class Locator:
             # 未找到关节时添加新关节
             if not target_joint_found:
                 rospy.loginfo(f"未找到关节{target_joint_name}，添加新关节")
-                new_joint = [
-                    f'  <joint name="{target_joint_name}" type="fixed">\n',
-                    f'    <origin\n',
-                    f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
-                    f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
-                    f'    <parent\n',
-                    f'      link="${{prefix}}tool0" />\n',
-                    f'    <child\n',
-                    f'      link="${{prefix}}camera_color_optical_frame" />\n',
-                    f'    <axis\n',
-                    f'      xyz="0 0 0" />\n',
-                    f'  </joint>\n'
-                ]
+                if self.config.get('arm', 'left')=='single':
+                    new_joint = [
+                        f'  <joint name="{target_joint_name}" type="fixed">\n',
+                        f'    <origin\n',
+                        f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
+                        f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
+                        f'    <parent\n',
+                        f'      link="tool0" />\n',
+                        f'    <child\n',
+                        f'      link="camera_color_optical_frame" />\n',
+                        f'    <axis\n',
+                        f'      xyz="0 0 0" />\n',
+                        f'  </joint>\n'
+                    ]
+                else:
+                    new_joint = [
+                        f'  <joint name="{target_joint_name}" type="fixed">\n',
+                        f'    <origin\n',
+                        f'      xyz="{xyz[0]} {xyz[1]} {xyz[2]}"\n',
+                        f'      rpy="{rpy[0]} {rpy[1]} {rpy[2]}" />\n',
+                        f'    <parent\n',
+                        f'      link="${{prefix}}tool0" />\n',
+                        f'    <child\n',
+                        f'      link="${{prefix}}camera_color_optical_frame" />\n',
+                        f'    <axis\n',
+                        f'      xyz="0 0 0" />\n',
+                        f'  </joint>\n'
+                    ]
                 # 插入到xacro:macro结束前
                 for i in range(len(new_content)):
                     if "</xacro:macro>" in new_content[i]:
@@ -526,6 +795,7 @@ class Locator:
             rospy.logerr(f"写入失败: {traceback.format_exc()}")
             shutil.copy2(backup_path, xacro_path)
             return False
+
 
 
 if __name__ == '__main__':
