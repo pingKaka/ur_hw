@@ -261,43 +261,8 @@ roslaunch manipulator B_JP_record.launch Record_JPfile:=robot
 - 编写C++函数，实现在抓起方块后，将其从场景中删除并绑定在夹爪末端；在放置方块后，将方块从夹爪末端断开，并添加到场景中。
 
 ## 1106任务
-```shell
-echo 'SUBSYSTEM=="usb", ATTRS{idVendor}=="03e7", MODE="0666"' | sudo tee /etc/udev/rules.d/80-movidius.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-
-cd ~/C_library/depthai
-python3 install_requirements.py
-python3 depthai_demo.py
-```<?xml version="1.0"?>
-<launch>
-    <!-- <args for urdf/> -->
-    <arg name="camera_model"         default="OAK-D" />
-    <arg name="tf_prefix"            default="oak" />
-
-    <arg name="base_frame"           default="oak-d_frame" />
-    <arg name="parent_frame"         default="oak-d-base-frame" />
-
-    <arg name="cam_pos_x"             default="0.0" /> <!-- Position respect to base frame (i.e. "base_link) -->
-    <arg name="cam_pos_y"             default="0.0" /> <!-- Position respect to base frame (i.e. "base_link) -->
-    <arg name="cam_pos_z"             default="0.0" /> <!-- Position respect to base frame (i.e. "base_link) -->
-    <arg name="cam_roll"              default="0.0" /> <!-- Orientation respect to base frame (i.e. "base_link) -->
-    <arg name="cam_pitch"             default="0.0" /> <!-- Orientation respect to base frame (i.e. "base_link) -->
-    <arg name="cam_yaw"               default="0.0" /> <!-- Orientation respect to base frame (i.e. "base_link) -->
-
-
-    <param name="depthai_robot_description"
-               command="$(find xacro)/xacro '$(find depthai_bridge)/urdf/depthai_descr.urdf.xacro'
-                        camera_name:=$(arg tf_prefix)
-                        camera_model:=$(arg camera_model)
-                        base_frame:=$(arg base_frame)
-                        parent_frame:=$(arg parent_frame)
-                        cam_pos_x:=$(arg cam_pos_x)
-                        cam_pos_y:=$(arg cam_pos_y)
-                        cam_pos_z:=$(arg cam_pos_z)
-                        cam_roll:=$(arg cam_roll)
-                        cam_pitch:=$(arg cam_pitch)
-                        cam_yaw:=$(arg cam_yaw)"/>
-
-
-    <node name="$(arg tf_prefix)_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" output="screen" required="true"/>
-</launch>
+- 参考`20251107 相机标定与手眼标定.pdf`完成:
+   1. 测试`depthai_demo.py`
+   2. oak的ros驱动安装和测试
+- 相机内参和手眼标定:
+   - 详见$(rospack find locatornew)/README.md

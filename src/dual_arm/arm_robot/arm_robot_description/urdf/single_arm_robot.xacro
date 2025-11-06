@@ -105,11 +105,14 @@
     <origin xyz="0 0 0.025" rpy="0 0 0"/> <!-- XYZ偏移：Z=0.025m；RPY默认对齐 -->
   </joint>
 
+  <!-- ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！ -->
+  <!-- 先按照xyz平移原点，再按照ypr的顺序依次绕自身ZYX轴旋转相应角度 -->
+  <!-- ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！ -->
   <link name="camera_color_optical_frame"/>
   <joint name="tool0_to_camera_color_optical_frame" type="fixed">
     <origin
-      xyz="-0.061423431 -0.068933734 0.066590299"
-      rpy="-0.569854 0.00553 -0.761223" />
+      xyz="-0.2 -0.2 0.1"
+      rpy="0 0 -0.754" />
     <parent
       link="tool0" />
     <child

@@ -26,7 +26,6 @@ from icecream import ic
 # 设备名称与配置文件的映射关系
 deviceNameToConfigFile = {
     '121table': 'config/121光学平台.json',
-    '102table': 'config/102桌面.json',
 }
 
 class Locator:
@@ -222,22 +221,16 @@ class Locator:
                 )
                 rospy.loginfo(f"相机内参已写入 {matrix_path}")
 
-            # 循环等待畸变系数
-            while not rospy.is_shutdown() and self.dist_coeffs is None:
-                if time.time() - start_time > timeout:
-                    raise TimeoutError("等待相机畸变系数超时（10秒）")
-                rospy.loginfo(f"等待相机畸变系数话题 {self.camera_info_topic}...")
-                rospy.sleep(0.5)
-
-            if self.dist_coeffs is not None:
-                dist_path = f"matrix/{self.config['arm']}_dist_coeffs.txt"
-                np.savetxt(
-                    dist_path,
-                    self.dist_coeffs,
-                    delimiter=',',
-                    fmt='%.6f'
-                )
-                rospy.loginfo(f"畸变系数已写入 {dist_path}")
+            self.dist_coeffs=[0.0]*5
+            self.dist_coeffs = np.array(self.dist_coeffs).flatten()
+            dist_path = f"matrix/{self.config['arm']}_dist_coeffs.txt"
+            np.savetxt(
+                dist_path,
+                self.dist_coeffs,
+                delimiter=',',
+                fmt='%.6f'
+            )
+            rospy.loginfo(f"畸变系数已写入 {dist_path}")
             self.camera_info_topic = ''  # 标记为已处理
         else:
             # 从文件加载内参（立即加载，不等待）

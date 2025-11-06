@@ -1,33 +1,33 @@
 {
     "station": "102table",
-    "arm": "single",
+    "arm": "left",
     "task": "calib",
-    "type": "circleGrid",
+    "type": "aruco",
     "matrix": "A1",
     "imageAndPoseDirectory": "img_take/",
     "poseRelativeFile": "pose.txt",
     "calibResultFile": "avg_tq_bTt.txt",
     "calibMethod": "CALIB_HAND_EYE_TSAI",
     "nonRotating": false,
-    "moveP_acc": 0.3,
-    "moveP_vel": 0.3,
+    "moveP_acc": 0.03,
+    "moveP_vel": 0.03,
     "offset": {
         "x": 0,
-        "y": -0.09,
+        "y": 0.1,
         "z": 0
     },
 
     "calib": {
         "overwrite": true,
-        "minX": -80,
-        "maxX": 80,
-        "minY": -50,
-        "maxY": 50,
+        "minX": -5,
+        "maxX": 5,
+        "minY": -5,
+        "maxY": 5,
         "minZ": 300,
-        "maxZ": 330,
+        "maxZ": 305,
         "pointNumX": 4,
         "pointNumY": 4,
-        "pointNumZ": 3
+        "pointNumZ": 2
     },
     "multiloc": {
         "minX": -100,
