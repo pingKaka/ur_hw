@@ -11,18 +11,23 @@
     "nonRotating": false,
     "moveP_acc": 0.3,
     "moveP_vel": 0.3,
+    "offset": {
+        "x": 0,
+        "y": -0.09,
+        "z": 0
+    },
 
     "calib": {
         "overwrite": true,
-        "minX": 0,
-        "maxX": 0,
-        "minY": 0,
-        "maxY": 0,
-        "minZ": 250,
-        "maxZ": 250,
-        "pointNumX": 2,
-        "pointNumY": 2,
-        "pointNumZ": 2
+        "minX": -80,
+        "maxX": 80,
+        "minY": -50,
+        "maxY": 50,
+        "minZ": 300,
+        "maxZ": 330,
+        "pointNumX": 4,
+        "pointNumY": 4,
+        "pointNumZ": 3
     },
     "multiloc": {
         "minX": -100,
@@ -45,7 +50,7 @@
     "aruco": {
         "ARUCO_DICT": "DICT_ARUCO_ORIGINAL",
         "MARKER_ID_AND_LENGTH": {
-            "38": 75
+            "21": 25
         }
     },
     "circleGrid": {

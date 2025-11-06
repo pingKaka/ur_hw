@@ -222,6 +222,7 @@ class MoveAndCapture:
             self.config['moveP_acc']=0.1
         self.publish_tf=None
         self.arm_short=self.config['arm'][0].upper()
+        self.offset=[self.config['offset']['x'],self.config['offset']['y'],self.config['offset']['z']]
     def readConfig(self, file):
         """
         读取任务配置文件（JSON格式），解析拍摄参数
@@ -323,8 +324,6 @@ class MoveAndCapture:
         # 1. 坐标变换：将目标坐标系下的点转换为机械臂基础坐标系下的点+姿态
         # （调用自定义函数transform_xyz_tTc_to_bTc，输入：目标点、bTt变换矩阵、坐标系标识）
         target_bTg = transform_xyz_tTc_to_bTg(targetXYZ_tTc, self.bTt, self.camera.gTc, self.config['matrix'], self.camera.camera_matrix, self.camera.dist_coeffs)
-        # if self.publish_tf is not None:
-        #     self.publish_tf(target_bTg, 'b', 'g')
         # 7. 从齐次变换矩阵中提取平移向量和旋转向量（格式适配机械臂控制）
         # 提取平移向量：齐次矩阵上右3x1部分，展平为1D数组
         point = target_bTg[:3, 3].flatten()/1000
@@ -343,8 +342,16 @@ class MoveAndCapture:
 
         # 3. 构造机械臂目标位姿（[x, y, z, rx, ry, rz]，单位：米/弧度）
         pose = [point[0], point[1], point[2], rpy_deg[0], rpy_deg[1], rpy_deg[2]]
+        if self.publish_tf is not None:
+            self.publish_tf(target_bTg, 'b', 'g')
+            # self.publish_tf(self.bTt, 'b', 't')
+            # self.publish_tf(self.camera.gTc, 'g', 'c')
+            print('-----')
+            # if input("Y/N:")!='Y':
+            #     return False
         # 4. 控制机械臂移动到目标位姿（速度0.2m/s，加速度0.1m/s²，调用Robot类的moveP函数）
-        self.robot.moveP(self.config['moveP_vel'], self.config['moveP_acc'], pose, self.arm_short)
+        if not self.robot.moveP(self.config['moveP_vel'], self.config['moveP_acc'], pose, self.arm_short, self.offset):
+            return False
 
         # 5. 等待机械臂稳定（0.1秒延迟，避免运动未结束就拍照）
         time.sleep(.1)
@@ -357,7 +364,10 @@ class MoveAndCapture:
         是整个类的入口函数，串联所有流程
         """
         print('~~~~~~~~开始拍摄~~~~~~~~')
+        bTt[:3,3]*=1000
         self.bTt=bTt
+        # print(f'bTt={self.bTt[:3,3]}')
+        self.publish_tf(self.bTt, 'b', 't')
         config = self.config
         task = config['task']  # 获取任务类型（oneloc：单次拍摄；calib：标定；loc：定位）
 

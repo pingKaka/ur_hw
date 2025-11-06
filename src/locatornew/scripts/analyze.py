@@ -541,11 +541,17 @@ class Pattern:
         transform_stamped = geometry_msgs.msg.TransformStamped()
         transform_stamped.header.stamp = rospy.Time.now()
         if a=='c':
-            transform_stamped.header.frame_id = f'{self.config["arm"]}_camera_color_optical_frame'  # 相机坐标系
+            if self.config['arm']=='single':
+                transform_stamped.header.frame_id = f'camera_color_optical_frame'  # 相机坐标系
+            else:
+                transform_stamped.header.frame_id = f'{self.config["arm"]}_camera_color_optical_frame'  # 相机坐标系
         elif a=='b':
             transform_stamped.header.frame_id = 'world'  # 机器人基座标
         elif a=='g':
-            transform_stamped.header.frame_id = f'{self.config["arm"]}_tool0'  # 机械臂工具坐标
+            if self.config['arm']=='single':
+                transform_stamped.header.frame_id = f'tool0'  # 机械臂工具坐标
+            else:
+                transform_stamped.header.frame_id = f'{self.config["arm"]}_tool0'  # 机械臂工具坐标
         elif a=='t':
             transform_stamped.header.frame_id = 'target'  # 标定板坐标
 
@@ -554,7 +560,10 @@ class Pattern:
         elif b=='b':
             transform_stamped.child_frame_id = f'{a}_world'  # 机器人基座标
         elif b=='g':
-            transform_stamped.child_frame_id = f'{a}_{self.config["arm"]}_tool0'  # 机械臂工具坐标
+            if self.config['arm']=='single':
+                transform_stamped.child_frame_id = f'{a}_tool0'  # 机械臂工具坐标
+            else:
+                transform_stamped.child_frame_id = f'{a}_{self.config["arm"]}_tool0'  # 机械臂工具坐标
         elif b=='t':
             if marker_name=='':
                 transform_stamped.child_frame_id = f'target_marker'  # 标定板坐标
@@ -898,9 +907,19 @@ class Aruco(Pattern):
 
         # 2. 检测ArUco二维码
         gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-        parameters = cv.aruco.DetectorParameters()
-        aruco_detector = cv.aruco.ArucoDetector(self.arucoDict)
-        marker_corners, marker_ids, rejected_candidates = aruco_detector.detectMarkers(gray)
+        # parameters = cv.aruco.DetectorParameters()
+        # aruco_detector = cv.aruco.ArucoDetector(self.arucoDict)
+        # marker_corners, marker_ids, rejected_candidates = aruco_detector.detectMarkers(gray)
+
+        # 兼容OpenCV 4.4及以下版本的写法
+        parameters = cv.aruco.DetectorParameters_create()  # 旧版本参数初始化
+        # 直接使用detectMarkers函数，无需创建ArucoDetector对象
+        marker_corners, marker_ids, rejected_candidates = cv.aruco.detectMarkers(
+            image, 
+            self.arucoDict, 
+            parameters=parameters
+        )
+
 
         # 3. 处理检出结果：构建“目标ID→角点”的映射（未检出为None）
         # 初始化结果字典：所有目标ID默认设为None
@@ -1067,7 +1086,7 @@ class CircleGrid(Pattern):
         patternSize = (self.circlePerRow, self.circlePerRow)
         #cv.imwrite('data/gray.png', gray.copy())
 
-        params = cv.SimpleBlobDetector.Params()
+        params = cv.SimpleBlobDetector_Params()
         ic(params.maxArea)
         ic(params.blobColor)
         detector = cv.SimpleBlobDetector.create(params)

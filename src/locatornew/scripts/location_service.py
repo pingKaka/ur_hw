@@ -168,7 +168,7 @@ class Locator:
                 child_frame,
                 rospy.Time(0)
             )
-            
+            trans=[t*1000 for t in trans]
             # 转换为4x4变换矩阵
             return self.trans_rot_to_matrix(trans, rot)
         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
@@ -197,8 +197,15 @@ class Locator:
 
         # 处理相机内参
         if self.camera_info_topic != '':
+            # 订阅相机信息话题
+            self.camera_info_sub = rospy.Subscriber(
+                self.camera_info_topic,
+                CameraInfo,
+                self.camera_info_callback
+            )
+            rospy.loginfo(f"订阅相机信息话题: {self.camera_info_topic}")
             # 循环等待内参，直到获取成功或超时
-            while self.camera_matrix is None:
+            while not rospy.is_shutdown() and self.camera_matrix is None:
                 if time.time() - start_time > timeout:
                     raise TimeoutError("等待相机内参超时（10秒）")
                 rospy.loginfo(f"等待相机内参话题 {self.camera_info_topic}...")
@@ -216,7 +223,7 @@ class Locator:
                 rospy.loginfo(f"相机内参已写入 {matrix_path}")
 
             # 循环等待畸变系数
-            while self.dist_coeffs is None:
+            while not rospy.is_shutdown() and self.dist_coeffs is None:
                 if time.time() - start_time > timeout:
                     raise TimeoutError("等待相机畸变系数超时（10秒）")
                 rospy.loginfo(f"等待相机畸变系数话题 {self.camera_info_topic}...")
@@ -313,7 +320,26 @@ class Locator:
                 
                 # 更新时间戳并发布
                 filtered_transform.header.stamp = rospy.Time.now()
-                self.tf_broadcaster.sendTransform(filtered_transform)
+
+                translation = (filtered_transform.transform.translation.x,
+                            filtered_transform.transform.translation.y,
+                            filtered_transform.transform.translation.z)
+                rotation = (filtered_transform.transform.rotation.x,
+                            filtered_transform.transform.rotation.y,
+                            filtered_transform.transform.rotation.z,
+                            filtered_transform.transform.rotation.w)
+                timestamp = rospy.Time.now()  # 或使用原时间戳 filtered_transform.header.stamp
+                child_frame = filtered_transform.child_frame_id  # "g_camera_color_optical_frame"
+                parent_frame = filtered_transform.header.frame_id  # "single_tool0"
+
+                # 正确调用 sendTransform
+                self.tf_broadcaster.sendTransform(
+                    translation,
+                    rotation,
+                    timestamp,
+                    child_frame,
+                    parent_frame
+                )
             
             time.sleep(1.0 / rate)
 
@@ -463,15 +489,8 @@ class Locator:
         self.camera_image_topic = rospy.get_param("~camera_image_topic", "")
         if self.camera_info_topic is None:
             self.camera_info_topic = rospy.get_param("~camera_info_topic", "")
-            # 订阅相机信息话题
-            self.camera_info_sub = rospy.Subscriber(
-                self.camera_info_topic,
-                CameraInfo,
-                self.camera_info_callback
-            )
-            rospy.loginfo(f"订阅相机信息话题: {self.camera_info_topic}")
         if self.camera_gTc_flag is None:
-            self.camera_gTc_flag = rospy.get_param("~camera_gTc_flag", "")
+            self.camera_gTc_flag = rospy.get_param("~camera_gTc_flag", False)
 
 
         # 等待相机信息和TF变换就绪后再初始化Camera

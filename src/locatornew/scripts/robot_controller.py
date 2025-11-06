@@ -13,6 +13,7 @@ class Robot:
     def __init__(self):
         # 状态标志
         self.moveP_done = False  # 运动完成标志
+        self.moveP_success = False
         self.getpose_done = False  # 位姿获取完成标志
         self.cmd_pose = None  # 存储指令获取的位姿
 
@@ -116,12 +117,15 @@ class Robot:
         rospy.logwarn(f"姿态差异    : {np.round(quat_diff, 6)}")
         rospy.logwarn("===========================\n")
 
-    def moveP(self, speed: float, acce: float, pose: np.ndarray, arm: str = "L"):
+    def moveP(self, speed: float, acce: float, pose: np.ndarray, arm: str = "L", offset: list = [0.0,0.0,0.0]):
         """控制机械臂运动到指定位姿"""
         rate = rospy.Rate(3)
         
         # 处理姿态：弧度转角度
         pose_list = list(pose[:3]) + list(pose[3:])
+        pose_list[0]+=offset[0]
+        pose_list[1]+=offset[1]
+        pose_list[2]+=offset[2]
         # pose_list[0]+=0.03
         
         # 构建运动指令
@@ -142,6 +146,7 @@ class Robot:
         while not self.moveP_done and not rospy.is_shutdown():
             rate.sleep()
         time.sleep(2.0)
+        return self.moveP_success
 
     def feedback_callback(self, msg: String):
         """处理反馈消息"""
@@ -166,8 +171,10 @@ class Robot:
                     result=feedback["result"]
                     if result=="success":
                         print(f"运动到目标点成功")
+                        self.moveP_success=True
                     else:
                         rospy.logerr(f"运动到目标点失败 result={result}")
+                        self.moveP_success=False
                     self.moveP_done = True
                 
         except json.JSONDecodeError:
