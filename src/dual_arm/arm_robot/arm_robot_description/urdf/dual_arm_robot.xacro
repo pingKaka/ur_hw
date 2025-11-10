@@ -143,8 +143,8 @@
   </joint>
   <joint name="${prefix2}tool0_to_camera_color_optical_frame" type="fixed">
     <origin
-      xyz="-0.004946901 -0.062018262 0.07452819499999999"
-      rpy="0.005105 -0.001831 0.013797" />
+      xyz="-0.008276411 0.072195472 0.106905006"
+      rpy="-1.562305 0.020804 0.002134" />
     <parent
       link="${prefix2}tool0" />
     <child

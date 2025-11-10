@@ -346,7 +346,7 @@ class MoveAndCapture:
             self.publish_tf(target_bTg, 'b', 'g')
             # self.publish_tf(self.bTt, 'b', 't')
             # self.publish_tf(self.camera.gTc, 'g', 'c')
-            print('-----')
+            # print('-----')
             # if input("Y/N:")!='Y':
             #     return False
         # 4. 控制机械臂移动到目标位姿（速度0.2m/s，加速度0.1m/s²，调用Robot类的moveP函数）

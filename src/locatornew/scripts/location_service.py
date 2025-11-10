@@ -25,6 +25,16 @@ from icecream import ic
 
 # 设备名称与配置文件的映射关系
 deviceNameToConfigFile = {
+    'uv': 'config/紫外光谱仪.json',
+    'fume_hood': 'config/通风橱.json',
+    'auto_balance': 'config/自动进样天平.json',
+    'liquid_injector_1ml': 'config/液体进样器1ml.json',
+    'liquid_injector_5ml': 'config/液体进样器5ml.json',
+    'reagent_rack': 'config/试剂架.json',
+    'elecchemistry': 'config/电化学.json',
+    'centrifuge_purification': 'config/离心纯化.json',
+    'waste_bucket_cap': 'config/废液桶盖.json',
+    'waste_bucket': 'config/废液桶.json',
     '121table': 'config/121光学平台.json',
 }
 
