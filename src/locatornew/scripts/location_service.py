@@ -25,17 +25,8 @@ from icecream import ic
 
 # 设备名称与配置文件的映射关系
 deviceNameToConfigFile = {
-    'uv': 'config/紫外光谱仪.json',
-    'fume_hood': 'config/通风橱.json',
-    'auto_balance': 'config/自动进样天平.json',
-    'liquid_injector_1ml': 'config/液体进样器1ml.json',
-    'liquid_injector_5ml': 'config/液体进样器5ml.json',
-    'reagent_rack': 'config/试剂架.json',
-    'elecchemistry': 'config/电化学.json',
-    'centrifuge_purification': 'config/离心纯化.json',
-    'waste_bucket_cap': 'config/废液桶盖.json',
-    'waste_bucket': 'config/废液桶.json',
     '121table': 'config/121光学平台.json',
+    '102table': 'config/102桌面.json',
 }
 
 class Locator:
@@ -107,6 +98,7 @@ class Locator:
         self.tf_broadcaster = tf.TransformBroadcaster()
         self.tf_listener = tf.TransformListener()  # 内部已包含缓存机制
         
+        self.camera=None
         self.camera_gTc_flag = None
         self.camera_info_topic = None
         self.camera_image_topic = None
@@ -452,7 +444,7 @@ class Locator:
 
     def publish_holdon_data(self, event):
         """10Hz定时器回调：发布缓存的位姿和站点信息"""
-        if self.cached_bTt is None or self.cached_station is None:
+        if self.cached_bTt is None or self.cached_station is None or self.cached_bTt=={}:
             rospy.logwarn_throttle(1, "无有效缓存的bTt或station，跳过发布")
             return
         
@@ -566,6 +558,7 @@ class Locator:
                 self.config['task']='oneloc'
             if task == 'oneloc':
                 task_result_bTt = self.oneloc()
+                # if task_result_bTt is None or task_result_bTt=={}:
                 if task_result_bTt is None:
                     status = "error: single-location failed (no valid bTt)"
                     rospy.logerr(status)
@@ -618,9 +611,11 @@ class Locator:
 
             # 缓存结果并启动发布定时器
             self.cached_bTt = task_result_bTt
+            print("a")
             if self.publish_timer is None or not self.publish_timer.is_alive():
                 self.publish_timer = rospy.Timer(rospy.Duration(0.1), self.publish_holdon_data)
                 rospy.loginfo("10Hz publishing timer started (publishing obj_to_robot_holdon and class_order_holdon)")
+            print('b')
 
             return (status, True, task_result_bTt)
 
@@ -641,6 +636,7 @@ class Locator:
 
         # 调用通用逻辑
         status, _, _ = self._common_location_logic(command_dict)
+        self.camera.__del__()
         rospy.loginfo(f"Topic请求处理结果：{status}")
 
     def locator_service_callback(self, req):
@@ -661,6 +657,7 @@ class Locator:
 
         # 调用通用逻辑
         status, result_valid, task_result_bTt = self._common_location_logic(command_dict)
+        self.camera.__del__()
 
         # 构造服务响应
         resp.status = status

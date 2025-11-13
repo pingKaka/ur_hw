@@ -87,7 +87,7 @@ locatornew/
 
 ### 手眼标定gTc:gripper to camera
 
-- 预先在`arm_robot_description/urdf/dual_arm_robot.xacro或single_arm_robot.xacro`中设置好相机的近似位置，确定在rviz中能看到相应的`camera_color_optical_frame`的tf，视野向下为Y轴，向左为X轴，向前为Z轴
+- 预先在`arm_robot_description/urdf/dual_arm_robot.xacro或single_arm_robot.xacro`中设置好相机的近似位置，确定在rviz中能看到相应的`camera_color_optical_frame`的tf，视野向下为Y轴，向右为X轴，向前为Z轴
 - 起驱动的基本方式是:
 
   `roslaunch locatornew location_service.launch`

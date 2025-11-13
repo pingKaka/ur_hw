@@ -94,7 +94,7 @@
   <joint name="wrist3_to_camera_flange" type="fixed">
     <parent link="wrist_3_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->
     <child link="camera_flange_link"/> <!-- 子连杆：相机法兰盘 -->
-    <origin xyz="0 0 0" rpy="0 0 2.356194490192345"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
+    <origin xyz="0 0 0" rpy="0 0 0.785"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
   </joint>
 
   <!-- 在此处修改RGI夹爪相对于相机支架的初始转角 rpy -->
@@ -102,7 +102,7 @@
   <joint name="camera_flange_to_rgi_gripper" type="fixed">
     <parent link="camera_flange_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->
     <child link="rgi_gripper_link"/> <!-- 子连杆：RGI夹爪 -->
-    <origin xyz="0 0 0.025" rpy="0 0 0"/> <!-- XYZ偏移：Z=0.025m；RPY默认对齐 -->
+    <origin xyz="0 0 0.015" rpy="0 0 1.5708"/> <!-- XYZ偏移：Z=0.025m；RPY默认对齐 -->
   </joint>
 
   <!-- ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！ -->
@@ -111,8 +111,8 @@
   <link name="camera_color_optical_frame"/>
   <joint name="tool0_to_camera_color_optical_frame" type="fixed">
     <origin
-      xyz="-0.2 -0.2 0.1"
-      rpy="0 0 -0.754" />
+      xyz="-0.06368597299999999 0.053615604 0.072200732"
+      rpy="-0.563987 0.006766 -2.350839" />
     <parent
       link="tool0" />
     <child
@@ -133,4 +133,18 @@
     <axis
       xyz="0 0 0" />
   </joint>
+
+<link name="realsense_link"/>
+<joint name="camera_to_realsense" type="fixed">
+  <origin 
+    xyz="0.014690846027202078 0.00037255609991005854 0.0002978618331738402"
+    rpy="0.00021234 -1.57078592 1.57018592" />
+  <parent link="camera_color_optical_frame"/>
+  <child link="realsense_link"/>
+  <axis xyz="0 0 0" />  <!-- 固定关节无需轴定义，可省略 -->
+</joint>
+
+
+
+
 </robot>

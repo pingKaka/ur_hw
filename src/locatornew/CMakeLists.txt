@@ -181,6 +181,8 @@ catkin_install_python(PROGRAMS
   scripts/calculate_rotate.py
   scripts/matrix_utils.py
   scripts/robot_controller.py
+  scripts/calibrated_camera_tf_publisher.py
+  scripts/block_detector.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 install(PROGRAMS
@@ -189,6 +191,8 @@ install(PROGRAMS
   scripts/calculate_rotate.py
   scripts/matrix_utils.py
   scripts/robot_controller.py
+  scripts/calibrated_camera_tf_publisher.py
+  scripts/block_detector.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

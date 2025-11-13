@@ -94,7 +94,7 @@
   <joint name="wrist3_to_camera_flange" type="fixed">
     <parent link="wrist_3_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->
     <child link="camera_flange_link"/> <!-- 子连杆：相机法兰盘 -->
-    <origin xyz="0 0 0" rpy="0 0 2.356194490192345"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
+    <origin xyz="0 0 0" rpy="0 0 0.785"/> <!-- XYZ偏移：Z=0mm；RPY默认对齐 -->
   </joint>
 
   <!-- 在此处修改RGI夹爪相对于相机支架的初始转角 rpy -->
@@ -102,14 +102,17 @@
   <joint name="camera_flange_to_rgi_gripper" type="fixed">
     <parent link="camera_flange_link"/> <!-- 父连杆：UR5e末端wrist_3_link（无prefix） -->
     <child link="rgi_gripper_link"/> <!-- 子连杆：RGI夹爪 -->
-    <origin xyz="0 0 0.025" rpy="0 0 0"/> <!-- XYZ偏移：Z=0.025m；RPY默认对齐 -->
+    <origin xyz="0 0 0.025" rpy="0 0 1.5708"/> <!-- XYZ偏移：Z=0.025m；RPY默认对齐 -->
   </joint>
 
+  <!-- ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！ -->
+  <!-- 先按照xyz平移原点，再按照ypr的顺序依次绕自身ZYX轴旋转相应角度 -->
+  <!-- ！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！！ -->
   <link name="camera_color_optical_frame"/>
   <joint name="tool0_to_camera_color_optical_frame" type="fixed">
     <origin
-      xyz="-0.061423431 -0.068933734 0.066590299"
-      rpy="-0.569854 0.00553 -0.761223" />
+      xyz="-0.062728629 0.053175951 0.0751652"
+      rpy="-0.567366 0.012877 -2.350068" />
     <parent
       link="tool0" />
     <child

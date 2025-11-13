@@ -107,7 +107,7 @@ class Camera:
         :return: 成功返回OpenCV格式图像（numpy数组），失败返回None
         """
         # 1. 获取当前帧（区分两种模式）
-        if self.camera_image_topic.lower() == "realsense":
+        if self.camera_image_topic.lower() == "":
             # RealSense模式：直接从流水线获取
             if self.pipe is None:
                 rospy.logerr("RealSense相机未初始化，无法保存帧")
@@ -142,7 +142,7 @@ class Camera:
         获取实时RGB帧（两种模式通用，返回OpenCV格式，便于后续处理）
         :return: 成功返回OpenCV图像（numpy数组，BGR8格式），失败返回None
         """
-        if self.camera_image_topic.lower() == "realsense":
+        if self.camera_image_topic.lower() == "":
             # RealSense模式：直接获取原始帧并转换为OpenCV格式
             if self.pipe is None:
                 rospy.logerr("RealSense相机未初始化，无法获取帧")
@@ -168,6 +168,7 @@ class Camera:
     def __del__(self):
         """析构函数：释放资源（避免内存泄漏）"""
         # 1. 停止RealSense流水线
+        print('释放相机资源')
         if self.pipe is not None:
             self.pipe.stop()
             rospy.loginfo("RealSense相机流水线已停止")
@@ -346,7 +347,7 @@ class MoveAndCapture:
             self.publish_tf(target_bTg, 'b', 'g')
             # self.publish_tf(self.bTt, 'b', 't')
             # self.publish_tf(self.camera.gTc, 'g', 'c')
-            # print('-----')
+            print('-----')
             # if input("Y/N:")!='Y':
             #     return False
         # 4. 控制机械臂移动到目标位姿（速度0.2m/s，加速度0.1m/s²，调用Robot类的moveP函数）

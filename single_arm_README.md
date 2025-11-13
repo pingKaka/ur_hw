@@ -266,3 +266,51 @@ roslaunch manipulator B_JP_record.launch Record_JPfile:=robot
    2. oak的ros驱动安装和测试
 - 相机内参和手眼标定:
    - 详见$(rospack find locatornew)/README.md
+
+## 1112任务
+### .bashrc
+- 本目录下存有正确的.bashrc，可以直接复制到主目录
+### realsense-viewer
+```bash
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
+sudo add-apt-repository "deb https://librealsense.intel.com/Debian/apt-repo $(lsb_release -cs) main" -u
+sudo apt-get install librealsense2-dkms -y
+sudo apt-get install libatk-bridge2.0-0=2.34.1-3 -y
+sudo apt-get install librealsense2-utils -y
+sudo apt-get install librealsense2-dev
+```
+- 测试`realsense-viewer`：`Stereo Module`和`RGB Camera`模式
+![](image/realsense-viewer.png)
+### realsense ros驱动
+```bash
+sudo apt-get install ros-noetic-realsense2-camera -y
+roslaunch realsense2_camera rs_camera.launch enable_pointcloud:=true align_depth:=true
+```
+- `rostopic list`查看realsense驱动所产生的数据话题
+- 运行`rviz`:
+   1. 设置`Global Options:Fixed Frame:camera_link`
+   2. 添加相机RGB融合话题：`Add:By Topic:/camera/color/image_raw/Camera/raw`
+   3. 添加相机RGB图像：`Add:By Topic:/camera/color/image_raw/Image/raw`
+   4. 添加相机点云：`Add:By Topic:/camera/depth/image_rect_raw/DepthCloud`
+   5. 添加2D彩色点云：`Add:By Topic:/camera/depth/color/points`
+- 查看realsense驱动相关启动参数：`sudo gedit $(rospack find realsense2_camera)/launch/rs_camera.launch`
+### 手眼标定
+- 安装依赖项：
+```bash
+wget http://fishros.com/install -O fishros && . fishros
+# [13]:一键配置:python国内源
+pip install pyrealsense2 icecream tqdm statsmodels
+```
+- 详见详见`$(rospack find locatornew)/README.md`和`src/PWS/singlelanuch.sh`，适当选取launch启动指令:
+```bash
+# 启动定位服务
+gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch; exec bash"
+gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch camera_gTc_flag:=true; exec bash"
+```
+### 角点采样和平面法向量tf发布
+```bash
+roblaunch
+rosrun locatornew block_detector.py
+```
+- 依据提示依次选择目标平面的四个角点，随后自动计算平面中心点、平面方程、平面法向量，并将法向量发布为tf
+![](image/pointcloud.png)
