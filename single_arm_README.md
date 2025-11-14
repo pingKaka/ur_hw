@@ -268,8 +268,11 @@ roslaunch manipulator B_JP_record.launch Record_JPfile:=robot
    - 详见$(rospack find locatornew)/README.md
 
 ## 1112任务
+
+> 由于realsense相机和oak相机安装位置接近，可以保留上周标定的手眼矩阵`$(rospack find locatornew)/scripts/matrix/single_gTc.txt`作为初始手眼矩阵，也可重新设置一遍`$(rospack find arm_robot_description)/urdf/single_arm_robot.xacro`
+
 ### .bashrc
-- 本目录下存有正确的.bashrc，可以直接复制到主目录
+- 本目录下存有正确的.bashrc，可以直接复制到主目录并覆盖
 ### realsense-viewer
 ```bash
 sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE || sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE
@@ -288,12 +291,12 @@ roslaunch realsense2_camera rs_camera.launch enable_pointcloud:=true align_depth
 ```
 - `rostopic list`查看realsense驱动所产生的数据话题
 - 运行`rviz`:
-   1. 设置`Global Options:Fixed Frame:camera_link`
+   1. 设置世界坐标系：`Global Options:Fixed Frame:camera_link`
    2. 添加相机RGB融合话题：`Add:By Topic:/camera/color/image_raw/Camera/raw`
    3. 添加相机RGB图像：`Add:By Topic:/camera/color/image_raw/Image/raw`
    4. 添加相机点云：`Add:By Topic:/camera/depth/image_rect_raw/DepthCloud`
    5. 添加2D彩色点云：`Add:By Topic:/camera/depth/color/points`
-- 查看realsense驱动相关启动参数：`sudo gedit $(rospack find realsense2_camera)/launch/rs_camera.launch`
+- 查看驱动相关启动参数：`sudo gedit $(rospack find realsense2_camera)/launch/rs_camera.launch`
 ### 手眼标定
 - 安装依赖项：
 ```bash
@@ -312,5 +315,5 @@ gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch ca
 roblaunch
 rosrun locatornew block_detector.py
 ```
-- 依据提示依次选择目标平面的四个角点，随后自动计算平面中心点、平面方程、平面法向量，并将法向量发布为tf
+- 依据提示依次选择目标平面的四个角点，程序将自动计算平面中心点、平面方程、平面法向量，并将法向量发布为tf
 ![](image/pointcloud.png)
