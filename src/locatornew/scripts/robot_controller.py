@@ -117,6 +117,7 @@ class Robot:
         rospy.logwarn(f"姿态差异    : {np.round(quat_diff, 6)}")
         rospy.logwarn("===========================\n")
 
+    # locatornew/scripts/robot_controller.py: 如何将目标位姿(x,y,z,rx,ry,rz)发送给机械臂使其运动至目标点
     def moveP(self, speed: float, acce: float, pose: np.ndarray, arm: str = "L", offset: list = [0.0,0.0,0.0]):
         """控制机械臂运动到指定位姿"""
         rate = rospy.Rate(3)

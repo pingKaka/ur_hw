@@ -314,6 +314,7 @@ class MoveAndCapture:
         self.csvwriter.writerow([nums] + list(final_state))
         print(f'成功保存图片"./img_take/{image_name}与位姿')
 
+    # /locatornew/scripts/capture.py: 包含如何将矩阵转为rx,ry,rz
     def moveAndTakePhoto(self, nums, targetXYZ_tTc):
         """
         核心函数：计算机械臂目标位姿→控制机械臂移动→拍照→记录位姿
@@ -333,7 +334,7 @@ class MoveAndCapture:
         rpy_rad = R.from_matrix(target_bTg[:3, :3]).as_euler('xyz')  
         # 转为角度制（因为 xyzrpyToPose 输入的 R/P/Y 是角度制）
         rpy_deg = np.rad2deg(rpy_rad)  
-        # 构造机械臂目标位姿：[x, y, z（米）, Roll, Pitch, Yaw（角度）]
+        # 构造机械臂目标位姿：[x, y, z（米）, rx(Roll), ry(Pitch), rz(Yaw)（角度）]
         pose = [point[0], point[1], point[2], rpy_deg[0], rpy_deg[1], rpy_deg[2]]
         print(f"第{nums}个目标点：{point}, rpy_deg:{rpy_deg}")
         # return

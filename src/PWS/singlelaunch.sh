@@ -24,7 +24,7 @@ gnome-terminal --tab -- bash -c "roslaunch gripper_modbus Gripper_ModbusControl.
 gnome-terminal --tab -- bash -c "roslaunch gripper_modbus Gripper_ModbusControl.launch type:=PGI port:=/dev/ttyUSB1 prefix:=PGI; exec bash"
 
 # 启动定位服务
-gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch; exec bash"
+gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch camera_image_topic:=/camera/color/image_raw; exec bash"
 # gnome-terminal --tab -- bash -c "roslaunch locatornew location_service.launch camera_gTc_flag:=true; exec bash"
 
 #sudo udevadm trigger
