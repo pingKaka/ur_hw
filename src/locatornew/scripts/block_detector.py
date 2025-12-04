@@ -29,7 +29,7 @@ class BlockDetector:
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer)
         self.tf_broadcaster = TransformBroadcaster()
-        self.target_frame = "camera_color_optical_frame"  # 父帧：相机光学帧
+        self.target_frame = "camera_color_optical_frame"  # 父坐标系：相机坐标系
         
         # 手动选点相关
         self.clicked_corners = []  # 存储点击的四个角点（像素坐标）
@@ -45,10 +45,10 @@ class BlockDetector:
         self.plane_normal = None            # 顶面平面法向量（单位向量）
         self.plane_params = None  # 存储平面方程 Ax+By+Cz+D=0 的系数
 
-        # 新增：Reset按钮参数
-        self.btn_rect = (10, 10, 100, 40)  # 按钮区域：(x, y, width, height) 左上角坐标+宽高
-        self.btn_text = "Reset"
-        self.is_drawing = False  # 标记是否正在刷新图像
+        # # 新增：Reset按钮参数
+        # self.btn_rect = (10, 10, 100, 40)  # 按钮区域：(x, y, width, height) 左上角坐标+宽高
+        # self.btn_text = "Reset"
+        # self.is_drawing = False  # 标记是否正在刷新图像
         
         # 发布识别结果图像
         self.result_img_pub = rospy.Publisher("/block_detection/result_image", Image, queue_size=1)
@@ -56,18 +56,25 @@ class BlockDetector:
         self.plane_marker_pub = rospy.Publisher("/block_detection/plane_marker", Marker, queue_size=1)
         
         # 窗口名称
-        self.window_name = "Select Block Top 4 Corners (Click in order: TL->TR->BR->BL)"
+        # self.window_name = "Select Block Top 4 Corners (Click in order: TL->TR->BR->BL)"
         
-        rospy.loginfo("方块检测节点已启动，等待相机数据...")
-        rospy.loginfo("提示：相机图像显示后，按 左上→ 右上→ 右下→ 左下 顺序点击方块顶面四个角点")
+        # rospy.loginfo("方块检测节点已启动，等待相机数据...")
+        # rospy.loginfo("提示：相机图像显示后，按 左上→ 右上→ 右下→ 左下 顺序点击方块顶面四个角点")
 
         # 订阅话题并绑定回调函数（关键新增部分）
         rospy.Subscriber("/camera/color/camera_info", CameraInfo, self.camera_info_cb)
         rospy.Subscriber("/camera/color/image_raw", Image, self.color_image_cb)
         rospy.Subscriber("/camera/depth/color/points", PointCloud2, self.pointcloud_cb)
-        # 新增：启动图像刷新线程
-        self.image_thread = threading.Thread(target=self.image_refresh_loop, daemon=True)
-        self.image_thread.start()
+        # # 新增：启动图像刷新线程
+        # self.image_thread = threading.Thread(target=self.image_refresh_loop, daemon=True)
+        # self.image_thread.start()
+
+        #yolo模型配置
+        from ultralytics import YOLO
+        self.yolo_model = YOLO("../150best.pt")  # 加载训练好的YOLO模型
+        self.target_class = ["yellow","red","blue"]  # 模型中方块的类别名称/ID
+        self.detection_conf = 0.5  # 检测置信度阈值
+        self.auto_detect_done = False  # 自动检测完成标志
 
     def camera_info_cb(self, msg):
         """获取相机内参，初始化相机模型"""
@@ -75,121 +82,140 @@ class BlockDetector:
             self.camera_model.fromCameraInfo(msg)
             self.camera_info_received = True
             rospy.loginfo("相机内参已获取")
-    def image_refresh_loop(self):
-        """循环刷新图像窗口，显示按钮和采点状态"""
-        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.window_name, 1280, 720)
-        cv2.setMouseCallback(self.window_name, self.mouse_click_callback)
+    # def image_refresh_loop(self):
+    #     """循环刷新图像窗口，显示按钮和采点状态"""
+    #     cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+    #     cv2.resizeWindow(self.window_name, 1280, 720)
+    #     cv2.setMouseCallback(self.window_name, self.mouse_click_callback)
         
-        while not rospy.is_shutdown():
-            if self.cv_color_img is None:
-                rospy.sleep(0.1)
-                continue
+    #     while not rospy.is_shutdown():
+    #         if self.cv_color_img is None:
+    #             rospy.sleep(0.1)
+    #             continue
             
-            with self.image_lock:
-                temp_img = self.cv_color_img.copy()
+    #         with self.image_lock:
+    #             temp_img = self.cv_color_img.copy()
             
-            # 绘制Reset按钮
-            x, y, w, h = self.btn_rect
-            cv2.rectangle(temp_img, (x, y), (x + w, y + h), (255, 0, 0), -1)  # 蓝色按钮
-            cv2.putText(temp_img, self.btn_text, (x + 10, y + 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)  # 白色文字
+    #         # 绘制Reset按钮
+    #         x, y, w, h = self.btn_rect
+    #         cv2.rectangle(temp_img, (x, y), (x + w, y + h), (255, 0, 0), -1)  # 蓝色按钮
+    #         cv2.putText(temp_img, self.btn_text, (x + 10, y + 25),
+    #                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)  # 白色文字
             
-            # 绘制采点提示和状态
-            if not self.select_corners_done:
-                cv2.putText(temp_img, "Click 4 corners in order: TL->TR->BR->BL", (10, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            else:
-                cv2.putText(temp_img, "Selection Done! Click Reset to reselect", (10, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+    #         # 绘制采点提示和状态
+    #         if not self.select_corners_done:
+    #             cv2.putText(temp_img, "Click 4 corners in order: TL->TR->BR->BL", (10, 80),
+    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    #         else:
+    #             cv2.putText(temp_img, "Selection Done! Click Reset to reselect", (10, 80),
+    #                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             
-            # 绘制已点击的角点和轮廓
-            if self.clicked_corners:
-                for i, (cx, cy) in enumerate(self.clicked_corners):
-                    cv2.circle(temp_img, (cx, cy), 5, (0, 0, 255), -1)
-                    cv2.putText(temp_img, str(i+1), (cx+10, cy),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-                if len(self.clicked_corners) == 4:
-                    corners = np.array(self.clicked_corners, dtype=np.int32)
-                    cv2.drawContours(temp_img, [corners], -1, (0, 255, 0), 3)
-                    cx_center = int(np.mean(corners[:, 0]))
-                    cy_center = int(np.mean(corners[:, 1]))
-                    cv2.circle(temp_img, (cx_center, cy_center), 7, (255, 0, 0), -1)
+    #         # 绘制已点击的角点和轮廓
+    #         if self.clicked_corners:
+    #             for i, (cx, cy) in enumerate(self.clicked_corners):
+    #                 cv2.circle(temp_img, (cx, cy), 5, (0, 0, 255), -1)
+    #                 cv2.putText(temp_img, str(i+1), (cx+10, cy),
+    #                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+    #             if len(self.clicked_corners) == 4:
+    #                 corners = np.array(self.clicked_corners, dtype=np.int32)
+    #                 cv2.drawContours(temp_img, [corners], -1, (0, 255, 0), 3)
+    #                 cx_center = int(np.mean(corners[:, 0]))
+    #                 cy_center = int(np.mean(corners[:, 1]))
+    #                 cv2.circle(temp_img, (cx_center, cy_center), 7, (255, 0, 0), -1)
             
-            # 显示图像
-            self.is_drawing = True
-            cv2.imshow(self.window_name, temp_img)
-            cv2.waitKey(1)
-            self.is_drawing = False
+    #         # 显示图像
+    #         self.is_drawing = True
+    #         cv2.imshow(self.window_name, temp_img)
+    #         cv2.waitKey(1)
+    #         self.is_drawing = False
             
-            rospy.sleep(0.03)  # 20Hz刷新频率
+    #         rospy.sleep(0.03)  # 20Hz刷新频率
 
     def color_image_cb(self, msg):
         """彩色图像回调：仅缓存图像，不关闭窗口"""
         with self.image_lock:
             self.cv_color_img = self.cv_bridge.imgmsg_to_cv2(msg, "bgr8")
         # 移除原有调用show_image_and_wait_click的逻辑，改为由刷新线程处理
-
-
-    def mouse_click_callback(self, event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDOWN:
-            # 检测是否点击Reset按钮
-            btn_x, btn_y, btn_w, btn_h = self.btn_rect
-            if (btn_x <= x <= btn_x + btn_w) and (btn_y <= y <= btn_y + btn_h):
-                # 重置采点状态（包含重置block_top_center_pixel）
-                self.clicked_corners = []
-                self.select_corners_done = False
-                self.block_top_center_pixel = None  # 重置
-                self.block_top_center_cam = None
-                self.plane_normal = None
-                self.plane_params = None
-                rospy.loginfo("已重置采点，可重新点击四个角点")
-                return
+        if not self.auto_detect_done and self.camera_info_received:
+        # YOLO推理（检测方块）
+            results = self.yolo_model(self.cv_color_img, conf=self.detection_conf)
             
-            # 正常采点逻辑（仅在未完成时生效）
-            if not self.select_corners_done and len(self.clicked_corners) < 4:
-                self.clicked_corners.append((x, y))
-                rospy.loginfo(f"已点击第 {len(self.clicked_corners)} 个角点：({x}, {y})")
+            # 解析检测结果，提取方块的边界框/关键点
+            boxes = results[0].boxes
+            for i in range(3):
+                for box in boxes:
+                    if box.cls == self.yolo_model.names.index(self.target_class[i]):  # 筛选目标类别
+                        # 情况1：模型输出边界框（xyxy格式）
+                        x1, y1, x2, y2 = box.xyxy[0].cpu().numpy().astype(int)
+                        # 从边界框提取四个角点（左上、右上、右下、左下）
+                        self.clicked_corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+
+                        # 计算顶面中心像素坐标
+                        self.block_top_center_pixel = (int((x1+x2)/2), int((y1+y2)/2))
+                        self.auto_detect_done = True  # 标记检测完成
+                        rospy.loginfo(f"Detect {box.cls} cube，corner points：{self.clicked_corners}")
+                        break
+
+
+    # def mouse_click_callback(self, event, x, y, flags, param):
+    #     if event == cv2.EVENT_LBUTTONDOWN:
+    #         # 检测是否点击Reset按钮
+    #         btn_x, btn_y, btn_w, btn_h = self.btn_rect
+    #         if (btn_x <= x <= btn_x + btn_w) and (btn_y <= y <= btn_y + btn_h):
+    #             # 重置采点状态（包含重置block_top_center_pixel）
+    #             self.clicked_corners = []
+    #             self.select_corners_done = False
+    #             self.block_top_center_pixel = None  # 重置
+    #             self.block_top_center_cam = None
+    #             self.plane_normal = None
+    #             self.plane_params = None
+    #             rospy.loginfo("已重置采点，可重新点击四个角点")
+    #             return
+            
+    #         # 正常采点逻辑（仅在未完成时生效）
+    #         if not self.select_corners_done and len(self.clicked_corners) < 4:
+    #             self.clicked_corners.append((x, y))
+    #             rospy.loginfo(f"已点击第 {len(self.clicked_corners)} 个角点：({x}, {y})")
                 
-                # 新增：当四个角点选完后，计算顶面中心像素坐标
-                if len(self.clicked_corners) == 4:
-                    self.select_corners_done = True
-                    # 计算四个角点的平均坐标作为中心
-                    corners = np.array(self.clicked_corners, dtype=np.int32)
-                    cx = int(np.mean(corners[:, 0]))
-                    cy = int(np.mean(corners[:, 1]))
-                    self.block_top_center_pixel = (cx, cy)  # 关键赋值
-                    rospy.loginfo(f"四个角点已选完，顶面中心像素坐标：({cx}, {cy})")
+    #             # 新增：当四个角点选完后，计算顶面中心像素坐标
+    #             if len(self.clicked_corners) == 4:
+    #                 self.select_corners_done = True
+    #                 # 计算四个角点的平均坐标作为中心
+    #                 corners = np.array(self.clicked_corners, dtype=np.int32)
+    #                 cx = int(np.mean(corners[:, 0]))
+    #                 cy = int(np.mean(corners[:, 1]))
+    #                 self.block_top_center_pixel = (cx, cy)  # 关键赋值
+    #                 rospy.loginfo(f"四个角点已选完，顶面中心像素坐标：({cx}, {cy})")
 
 
 
-    def show_image_and_wait_click(self):
-        """显示图像并等待用户点击四个角点"""
-        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.window_name, 1280, 720)
-        cv2.setMouseCallback(self.window_name, self.mouse_click_callback)
+    # def show_image_and_wait_click(self):
+    #     """显示图像并等待用户点击四个角点"""
+    #     cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+    #     cv2.resizeWindow(self.window_name, 1280, 720)
+    #     cv2.setMouseCallback(self.window_name, self.mouse_click_callback)
 
         
-        # 显示初始图像
-        with self.image_lock:
-            temp_img = self.cv_color_img.copy()
-            cv2.putText(temp_img, "Click 4 corners in order: TL->TR->BR->BL", (10, 30), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.imshow(self.window_name, temp_img)
+    #     # 显示初始图像
+    #     with self.image_lock:
+    #         temp_img = self.cv_color_img.copy()
+    #         cv2.putText(temp_img, "Click 4 corners in order: TL->TR->BR->BL", (10, 30), 
+    #                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    #     cv2.imshow(self.window_name, temp_img)
         
-        # 等待选点完成（最多等待30秒）
-        start_time = rospy.Time.now()
-        while not self.select_corners_done and not rospy.is_shutdown():
-            # if (rospy.Time.now() - start_time).to_sec() > 30:
-            #     rospy.logerr("选点超时（30秒），程序退出")
-            #     cv2.destroyAllWindows()
-            #     rospy.signal_shutdown("选点超时")
-            #     return
-            cv2.waitKey(100)
+    #     # 等待选点完成（最多等待30秒）
+    #     start_time = rospy.Time.now()
+    #     while not self.select_corners_done and not rospy.is_shutdown():
+    #         # if (rospy.Time.now() - start_time).to_sec() > 30:
+    #         #     rospy.logerr("选点超时（30秒），程序退出")
+    #         #     cv2.destroyAllWindows()
+    #         #     rospy.signal_shutdown("选点超时")
+    #         #     return
+    #         cv2.waitKey(100)
         
-        # 选点完成，关闭窗口
-        cv2.destroyAllWindows()
-        rospy.loginfo("选点完成，开始计算顶面中心、平面法向量和平整度...")
+    #     # 选点完成，关闭窗口
+    #     cv2.destroyAllWindows()
+    #     rospy.loginfo("选点完成，开始计算顶面中心、平面法向量和平整度...")
     def is_point_in_polygon(self, point, polygon, min_edge_distance=5):
         """
         判断点是否在多边形内部，且距离所有边缘不小于min_edge_distance（像素单位）
@@ -249,7 +275,7 @@ class BlockDetector:
 
     def pointcloud_cb(self, msg):
         # print(f'get {self.camera_info_received} {self.select_corners_done} {self.block_top_center_pixel}')
-        if not self.camera_info_received or not self.select_corners_done or self.block_top_center_pixel is None:
+        if not self.camera_info_received or not self.auto_detect_done or self.block_top_center_pixel is None:
             return
         
         self.pointcloud = msg
