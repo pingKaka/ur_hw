@@ -65,6 +65,8 @@ class BlockDetector:
         rospy.Subscriber("/camera/color/camera_info", CameraInfo, self.camera_info_cb)
         rospy.Subscriber("/camera/color/image_raw", Image, self.color_image_cb)
         rospy.Subscriber("/camera/depth/color/points", PointCloud2, self.pointcloud_cb)
+
+        rospy.Subscriber("isbegin", bool, self.feedback)
         # # 新增：启动图像刷新线程
         # self.image_thread = threading.Thread(target=self.image_refresh_loop, daemon=True)
         # self.image_thread.start()
@@ -82,6 +84,10 @@ class BlockDetector:
             self.camera_model.fromCameraInfo(msg)
             self.camera_info_received = True
             rospy.loginfo("相机内参已获取")
+
+    def feedback(self, msg):
+        self.auto_detect_done = not msg
+
     # def image_refresh_loop(self):
     #     """循环刷新图像窗口，显示按钮和采点状态"""
     #     cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
@@ -143,6 +149,8 @@ class BlockDetector:
             # 解析检测结果，提取方块的边界框/关键点
             boxes = results[0].boxes
             for i in range(3):
+                if self.auto_detect_done:
+                    break
                 for box in boxes:
                     if box.cls == self.yolo_model.names.index(self.target_class[i]):  # 筛选目标类别
                         # 情况1：模型输出边界框（xyxy格式）
@@ -153,6 +161,7 @@ class BlockDetector:
                         # 计算顶面中心像素坐标
                         self.block_top_center_pixel = (int((x1+x2)/2), int((y1+y2)/2))
                         self.auto_detect_done = True  # 标记检测完成
+
                         rospy.loginfo(f"Detect {box.cls} cube，corner points：{self.clicked_corners}")
                         break
 
